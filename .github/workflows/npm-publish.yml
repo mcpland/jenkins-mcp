@@ -11,19 +11,18 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
         with:
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22.x"
           cache: "pnpm"
           registry-url: "https://registry.npmjs.org"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm test
+      - run: pnpm check
       - run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_AUTH_TOKEN}}
