@@ -78,6 +78,26 @@ describe("mcp-server context", () => {
     expect(jenkins.url).toBe("https://jenkins.fromrequest.com");
   });
 
+  it("falls back to lifespan auth when request header auth is partial", async () => {
+    const runtime = new JenkinsRuntime(
+      {
+        jenkinsUrl: "https://jenkins.example.com",
+        jenkinsUsername: "username",
+        jenkinsPassword: "password",
+        jenkinsTimeout: 5,
+        jenkinsVerifySsl: true,
+        jenkinsSessionSingleton: false
+      },
+      {
+        jenkinsUrl: "https://jenkins.fromrequest.com"
+      }
+    );
+
+    const jenkins = await runtime.getJenkins();
+
+    expect(jenkins.url).toBe("https://jenkins.fromrequest.com");
+  });
+
   it("throws if auth is missing", async () => {
     const runtime = new JenkinsRuntime({
       jenkinsUrl: "https://jenkins.example.com",

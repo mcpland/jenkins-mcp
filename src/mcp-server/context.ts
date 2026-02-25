@@ -71,15 +71,11 @@ export class JenkinsRuntime implements ToolRuntime {
       return this.jenkinsClient;
     }
 
-    const jenkinsUrl = this.headerAuth
-      ? this.headerAuth.jenkinsUrl
-      : this.lifespanContext.jenkinsUrl;
-    const jenkinsUsername = this.headerAuth
-      ? this.headerAuth.jenkinsUsername
-      : this.lifespanContext.jenkinsUsername;
-    const jenkinsPassword = this.headerAuth
-      ? this.headerAuth.jenkinsPassword
-      : this.lifespanContext.jenkinsPassword;
+    const jenkinsUrl = this.headerAuth?.jenkinsUrl ?? this.lifespanContext.jenkinsUrl;
+    const jenkinsUsername =
+      this.headerAuth?.jenkinsUsername ?? this.lifespanContext.jenkinsUsername;
+    const jenkinsPassword =
+      this.headerAuth?.jenkinsPassword ?? this.lifespanContext.jenkinsPassword;
 
     if (!(jenkinsUrl && jenkinsUsername && jenkinsPassword)) {
       throw new Error(
