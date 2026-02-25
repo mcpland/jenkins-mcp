@@ -2,6 +2,7 @@ import { type Build, type BuildReplay, parseBuild, parseBuildReplay } from "./mo
 import { type ItemType, isColorItem, serializeItem } from "./model/item.js";
 import { type Node, parseNode } from "./model/node.js";
 import { type Queue, type QueueItem, parseQueue, parseQueueItem } from "./model/queue.js";
+import { Agent } from "undici";
 import {
   BUILD,
   BUILD_CONSOLE_OUTPUT,
@@ -85,6 +86,7 @@ export class Jenkins {
   private readonly username: string;
   private readonly password: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly dispatcher: unknown;
   private _crumbHeader: Record<string, string> | null = null;
 
   constructor(options: JenkinsOptions, fetchImpl: typeof fetch = fetch) {
@@ -94,6 +96,13 @@ export class Jenkins {
     this.timeout = options.timeout ?? 75;
     this.verifySsl = options.verifySsl ?? true;
     this.fetchImpl = fetchImpl;
+    this.dispatcher = this.verifySsl
+      ? undefined
+      : new Agent({
+          connect: {
+            rejectUnauthorized: false
+          }
+        });
   }
 
   endpointUrl(endpoint: string): string {
@@ -145,9 +154,12 @@ export class Jenkins {
     const timeoutController = new AbortController();
     const timeoutHandle = setTimeout(() => timeoutController.abort(), this.timeout * 1000);
     requestInit.signal = timeoutController.signal;
+    if (this.dispatcher) {
+      (requestInit as unknown as { dispatcher?: unknown }).dispatcher = this.dispatcher;
+    }
 
     try {
-      const response = await this.fetchImpl(requestUrl, requestInit);
+      const response = await this.fetchImpl(requestUrl, requestInit as RequestInit);
       if (!response.ok) {
         throw new JenkinsHttpError(
           `Jenkins request failed with status ${response.status}`,

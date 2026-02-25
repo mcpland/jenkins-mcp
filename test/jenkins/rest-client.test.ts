@@ -86,6 +86,32 @@ describe("Jenkins.request", () => {
     expect(headers.get("Custom-Header")).toBe("value");
     expect(headers.get("Jenkins-Crumb")).toBeNull();
   });
+
+  it("sets undici dispatcher when verifySsl is disabled", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    const jenkins = new Jenkins(
+      {
+        url: "https://example.com/",
+        username: "username",
+        password: "password",
+        timeout: 5,
+        verifySsl: false
+      },
+      fetchMock
+    );
+
+    (jenkins as unknown as { _crumbHeader: Record<string, string> })._crumbHeader = {
+      "Jenkins-Crumb": "crumb-value"
+    };
+
+    await jenkins.request("GET", "api/json");
+
+    const [, init] = fetchMock.mock.calls[0] as [
+      FetchInput | URL,
+      RequestInit & { dispatcher?: unknown }
+    ];
+    expect(init.dispatcher).toBeDefined();
+  });
 });
 
 describe("Jenkins.crumbHeader", () => {
