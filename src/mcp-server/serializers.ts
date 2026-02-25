@@ -1,7 +1,7 @@
 import type { Build } from "../jenkins/model/build.js";
 import type { ItemType } from "../jenkins/model/item.js";
 
-function removeNil(value: unknown): unknown {
+export function removeNil(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(removeNil);
   }
