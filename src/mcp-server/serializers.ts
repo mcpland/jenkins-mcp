@@ -1,5 +1,7 @@
 import type { Build } from "../jenkins/model/build.js";
 import type { ItemType } from "../jenkins/model/item.js";
+import type { Node } from "../jenkins/model/node.js";
+import type { QueueItem } from "../jenkins/model/queue.js";
 
 export function removeNil(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -71,4 +73,43 @@ export function itemToOutput(item: ItemType): Record<string, unknown> {
   delete output.fullName;
 
   return removeNil({ ...output, ...base }) as Record<string, unknown>;
+}
+
+export function nodeToOutput(node: Node, includeExecutors: boolean): Record<string, unknown> {
+  const base = {
+    displayName: node.displayName,
+    offline: node.offline
+  };
+
+  if (!includeExecutors) {
+    return base;
+  }
+
+  return removeNil({
+    ...base,
+    executors: node.executors.map((executor) => ({
+      currentExecutable: executor.currentExecutable
+    }))
+  }) as Record<string, unknown>;
+}
+
+export function queueItemToOutput(
+  queueItem: QueueItem,
+  includeTask: boolean
+): Record<string, unknown> {
+  const base = {
+    id: queueItem.id,
+    inQueueSince: queueItem.inQueueSince,
+    url: queueItem.url,
+    why: queueItem.why
+  };
+
+  if (!includeTask) {
+    return removeNil(base) as Record<string, unknown>;
+  }
+
+  return removeNil({
+    ...base,
+    task: queueItem.task
+  }) as Record<string, unknown>;
 }
