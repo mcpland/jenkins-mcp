@@ -1,0 +1,82 @@
+{
+  "name": "jenkins-mcp",
+  "version": "0.1.0",
+  "description": "Production-ready MCP server for Jenkins",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcpland/jenkins-mcp.git"
+  },
+  "homepage": "https://github.com/mcpland/jenkins-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/mcpland/jenkins-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "jenkins",
+    "automation"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.29.3",
+  "bin": {
+    "jenkins-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "clean": "rimraf coverage dist",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "commit": "cz",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && pnpm changeset publish"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.5.1",
+    "@changesets/cli": "^2.29.8",
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.18",
+    "commitizen": "^4.3.1",
+    "cz-git": "^1.12.0",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.1.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.0.18"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-git"
+    }
+  }
+}
