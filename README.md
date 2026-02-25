@@ -9,8 +9,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that p
 ## Table of Contents
 
 - [Features](#features)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
+- [Usage](#usage)
 - [Configuration](#configuration)
 - [MCP Client Integration](#mcp-client-integration)
 - [Available Tools](#available-tools)
