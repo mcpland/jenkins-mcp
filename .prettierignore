@@ -1,3 +1,5 @@
 coverage
 dist
 pnpm-lock.yaml
+mcp-jenkins-py
+.DS_Store

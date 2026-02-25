@@ -7,7 +7,10 @@ export async function getAllNodes(runtime: ToolRuntime): Promise<Array<Record<st
   return nodes.map((node) => nodeToOutput(node, false));
 }
 
-export async function getNode(runtime: ToolRuntime, name: string): Promise<Record<string, unknown>> {
+export async function getNode(
+  runtime: ToolRuntime,
+  name: string
+): Promise<Record<string, unknown>> {
   const jenkins = await runtime.getJenkins();
   const node = await jenkins.getNode(name, 2);
   return nodeToOutput(node, true);

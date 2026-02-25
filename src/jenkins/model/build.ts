@@ -52,9 +52,12 @@ export function parseBuild(value: unknown): Build {
     estimatedDuration: toOptionalNumber(raw.estimatedDuration),
     building: toOptionalBoolean(raw.building),
     result: toOptionalString(raw.result) ?? null,
-    nextBuild: raw.nextBuild && typeof raw.nextBuild === "object" ? parseBuild(raw.nextBuild) : null,
+    nextBuild:
+      raw.nextBuild && typeof raw.nextBuild === "object" ? parseBuild(raw.nextBuild) : null,
     previousBuild:
-      raw.previousBuild && typeof raw.previousBuild === "object" ? parseBuild(raw.previousBuild) : null
+      raw.previousBuild && typeof raw.previousBuild === "object"
+        ? parseBuild(raw.previousBuild)
+        : null
   };
 }
 

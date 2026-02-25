@@ -97,10 +97,16 @@ export class Jenkins {
   }
 
   endpointUrl(endpoint: string): string {
-    return [this.url, endpoint].map((segment) => String(segment).replace(/^\/+|\/+$/g, "")).join("/");
+    return [this.url, endpoint]
+      .map((segment) => String(segment).replace(/^\/+|\/+$/g, ""))
+      .join("/");
   }
 
-  async request(method: JenkinsHttpMethod, endpoint: string, options: RequestOptions = {}): Promise<Response> {
+  async request(
+    method: JenkinsHttpMethod,
+    endpoint: string,
+    options: RequestOptions = {}
+  ): Promise<Response> {
     const { data, headers, crumb = true, params } = options;
 
     const finalHeaders = new Headers(headers);
@@ -156,7 +162,11 @@ export class Jenkins {
       }
 
       if (error instanceof Error && error.name === "AbortError") {
-        throw new JenkinsHttpError(`Jenkins request timed out after ${this.timeout} seconds`, 408, "");
+        throw new JenkinsHttpError(
+          `Jenkins request timed out after ${this.timeout} seconds`,
+          408,
+          ""
+        );
       }
 
       throw error;
@@ -257,9 +267,16 @@ export class Jenkins {
     return toBuildReplayFromHtml(await response.text());
   }
 
-  async getBuildTestReport(fullname: string, number: number, depth = 0): Promise<Record<string, unknown>> {
+  async getBuildTestReport(
+    fullname: string,
+    number: number,
+    depth = 0
+  ): Promise<Record<string, unknown>> {
     const [folder, name] = this.parseFullname(fullname);
-    const response = await this.request("GET", BUILD_TEST_REPORT.call({ folder, name, number, depth }));
+    const response = await this.request(
+      "GET",
+      BUILD_TEST_REPORT.call({ folder, name, number, depth })
+    );
     return (await response.json()) as Record<string, unknown>;
   }
 
@@ -348,7 +365,13 @@ export class Jenkins {
     fullnamePattern?: string;
     colorPattern?: string;
   }): Promise<ItemType[]> {
-    const { folderDepth, folderDepthPerRequest = 10, classPattern, fullnamePattern, colorPattern } = options;
+    const {
+      folderDepth,
+      folderDepthPerRequest = 10,
+      classPattern,
+      fullnamePattern,
+      colorPattern
+    } = options;
 
     const classRegex = classPattern ? new RegExp(classPattern) : null;
     const fullnameRegex = fullnamePattern ? new RegExp(fullnamePattern) : null;
@@ -400,7 +423,10 @@ export class Jenkins {
       throw new Error("Missing queue location in Jenkins response.");
     }
 
-    const queueId = Number.parseInt(location.trim().replace(/\/+$/, "").split("/").at(-1) ?? "", 10);
+    const queueId = Number.parseInt(
+      location.trim().replace(/\/+$/, "").split("/").at(-1) ?? "",
+      10
+    );
     if (!Number.isFinite(queueId)) {
       throw new Error(`Invalid queue location: ${location}`);
     }

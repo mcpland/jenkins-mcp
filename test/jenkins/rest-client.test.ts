@@ -112,7 +112,9 @@ describe("Jenkins.crumbHeader", () => {
   });
 
   it("returns empty crumb header on 404", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("Not found", { status: 404 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("Not found", { status: 404 }));
 
     const jenkins = new Jenkins(
       {
@@ -127,7 +129,9 @@ describe("Jenkins.crumbHeader", () => {
   });
 
   it("rethrows non-404 errors", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("Boom", { status: 500 }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("Boom", { status: 500 }));
 
     const jenkins = new Jenkins(
       {
@@ -273,7 +277,9 @@ describe("Node operations", () => {
     });
 
     const [input] = fetchMock.mock.calls[0] as [FetchInput | URL, RequestInit];
-    expect(getUrlFromFetchInput(input)).toBe("https://example.com/computer/node-1/api/json?depth=0");
+    expect(getUrlFromFetchInput(input)).toBe(
+      "https://example.com/computer/node-1/api/json?depth=0"
+    );
   });
 
   it("maps Built-In Node to (master)", async () => {
@@ -289,7 +295,9 @@ describe("Node operations", () => {
     await jenkins.getNode("Built-In Node");
 
     const [input] = fetchMock.mock.calls[0] as [FetchInput | URL, RequestInit];
-    expect(getUrlFromFetchInput(input)).toBe("https://example.com/computer/(master)/api/json?depth=0");
+    expect(getUrlFromFetchInput(input)).toBe(
+      "https://example.com/computer/(master)/api/json?depth=0"
+    );
   });
 
   it("gets all nodes", async () => {
@@ -388,7 +396,9 @@ describe("Build operations", () => {
 
     const jenkins = createClient(fetchMock);
 
-    await expect(jenkins.getBuildConsoleOutput("example-job", 1)).resolves.toBe("Console output here");
+    await expect(jenkins.getBuildConsoleOutput("example-job", 1)).resolves.toBe(
+      "Console output here"
+    );
     await jenkins.stopBuild("example-job", 42);
 
     const [input] = fetchMock.mock.calls[1] as [FetchInput | URL, RequestInit];
@@ -396,14 +406,16 @@ describe("Build operations", () => {
   });
 
   it("extracts build replay scripts", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        '<textarea name="_.mainScript" checkMethod="post">main script code here</textarea>' +
-          '<textarea name="_.additionalScripts" checkMethod="post">additional script code here</textarea>' +
-          "<body>Foo</body>",
-        { status: 200 }
-      )
-    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(
+          '<textarea name="_.mainScript" checkMethod="post">main script code here</textarea>' +
+            '<textarea name="_.additionalScripts" checkMethod="post">additional script code here</textarea>' +
+            "<body>Foo</body>",
+          { status: 200 }
+        )
+      );
 
     const jenkins = createClient(fetchMock);
     await expect(jenkins.getBuildReplay("example-job", 1)).resolves.toEqual({
@@ -603,7 +615,9 @@ describe("Item operations", () => {
         }
       ]
     };
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => jsonResponse(jobsPayload));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => jsonResponse(jobsPayload));
 
     const jenkins = createClient(fetchMock);
 

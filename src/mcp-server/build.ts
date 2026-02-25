@@ -4,7 +4,12 @@ import type { ToolRuntime } from "./runtime.js";
 import { buildToOutput, removeNil } from "./serializers.js";
 
 function resolveLastBuildNumber(item: ItemType): number {
-  if ((item.kind === "Job" || item.kind === "FreeStyleProject" || item.kind === "MultiBranchProject") && item.lastBuild?.number) {
+  if (
+    (item.kind === "Job" ||
+      item.kind === "FreeStyleProject" ||
+      item.kind === "MultiBranchProject") &&
+    item.lastBuild?.number
+  ) {
     return item.lastBuild.number;
   }
 
@@ -20,7 +25,9 @@ function runningBuildToOutput(build: Build): Record<string, unknown> {
   }) as Record<string, unknown>;
 }
 
-export async function getRunningBuilds(runtime: ToolRuntime): Promise<Array<Record<string, unknown>>> {
+export async function getRunningBuilds(
+  runtime: ToolRuntime
+): Promise<Array<Record<string, unknown>>> {
   const jenkins = await runtime.getJenkins();
   const builds = await jenkins.getRunningBuilds();
   return builds.map(runningBuildToOutput);
@@ -92,7 +99,11 @@ export async function getBuildTestReport(
   return jenkins.getBuildTestReport(fullname, targetNumber);
 }
 
-export async function stopBuild(runtime: ToolRuntime, fullname: string, number: number): Promise<void> {
+export async function stopBuild(
+  runtime: ToolRuntime,
+  fullname: string,
+  number: number
+): Promise<void> {
   const jenkins = await runtime.getJenkins();
   await jenkins.stopBuild(fullname, number);
 }
