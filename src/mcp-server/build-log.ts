@@ -5,6 +5,7 @@ interface ConsoleLine {
   start: number;
   end: number;
   text: string;
+  matchedQueryIndex?: number | null;
 }
 
 export interface SearchBuildConsoleTextOptions {
@@ -49,6 +50,19 @@ interface StoredMatch extends BuildConsoleExcerpt {
   queryIndex: number;
 }
 
+interface ActiveConsoleLine {
+  startOffset: number | null;
+  totalBytes: number;
+  totalChars: number;
+  rawText: string | null;
+  prefix: string;
+  suffix: string;
+  searchTail: string;
+  matchedQueryIndex: number | null;
+  matchPreview: string | null;
+  matchPreviewAfterRemaining: number;
+}
+
 export const DEFAULT_FAILURE_QUERIES = [
   "Caused by:",
   "script returned exit code",
@@ -59,6 +73,12 @@ export const DEFAULT_FAILURE_QUERIES = [
   "ERROR",
   "FAILED"
 ];
+
+const MAX_STORED_FULL_LINE_CHARS = 4096;
+const MAX_TRUNCATED_LINE_HEAD_CHARS = 512;
+const MAX_TRUNCATED_LINE_TAIL_CHARS = 512;
+const MATCH_PREVIEW_CONTEXT_CHARS = 160;
+const TRUNCATION_MARKER = "[...truncated...]";
 
 function splitConsoleLines(text: string, baseOffset: number): ConsoleLine[] {
   const lines: ConsoleLine[] = [];
@@ -244,6 +264,110 @@ function normalizeLineText(rawSegment: string): string {
       : rawSegment;
 }
 
+function createActiveConsoleLine(): ActiveConsoleLine {
+  return {
+    startOffset: null,
+    totalBytes: 0,
+    totalChars: 0,
+    rawText: "",
+    prefix: "",
+    suffix: "",
+    searchTail: "",
+    matchedQueryIndex: null,
+    matchPreview: null,
+    matchPreviewAfterRemaining: 0
+  };
+}
+
+function findQueryMatch(
+  haystack: string,
+  queries: Array<Required<ProgressiveConsoleExcerptQuery>>
+): { queryIndex: number; index: number; length: number } | null {
+  for (const [queryIndex, query] of queries.entries()) {
+    const index = query.caseSensitive
+      ? haystack.indexOf(query.query)
+      : haystack.toLowerCase().indexOf(query.query.toLowerCase());
+
+    if (index !== -1) {
+      return {
+        queryIndex,
+        index,
+        length: query.query.length
+      };
+    }
+  }
+
+  return null;
+}
+
+function renderTruncatedLine(line: ActiveConsoleLine): string {
+  if (line.rawText !== null) {
+    return line.rawText;
+  }
+
+  const parts: string[] = [];
+  if (line.prefix) {
+    parts.push(line.prefix);
+  }
+
+  if (line.matchPreview) {
+    const previewAlreadyIncluded = parts.some((part) => part.includes(line.matchPreview ?? ""));
+    if (!previewAlreadyIncluded) {
+      parts.push(line.matchPreview);
+    }
+  }
+
+  if (line.suffix) {
+    const suffixAlreadyIncluded = parts.some((part) => part.includes(line.suffix));
+    if (!suffixAlreadyIncluded) {
+      parts.push(line.suffix);
+    }
+  }
+
+  if (parts.length === 0) {
+    return TRUNCATION_MARKER;
+  }
+
+  return parts.join(TRUNCATION_MARKER);
+}
+
+function appendRenderedSegment(line: ActiveConsoleLine, segment: string): void {
+  line.totalChars += segment.length;
+
+  if (line.rawText !== null) {
+    if (line.rawText.length + segment.length <= MAX_STORED_FULL_LINE_CHARS) {
+      line.rawText += segment;
+      return;
+    }
+
+    const combined = line.rawText + segment;
+    line.prefix = combined.slice(0, MAX_TRUNCATED_LINE_HEAD_CHARS);
+    line.suffix = combined.slice(-MAX_TRUNCATED_LINE_TAIL_CHARS);
+    line.rawText = null;
+    return;
+  }
+
+  line.suffix = (line.suffix + segment).slice(-MAX_TRUNCATED_LINE_TAIL_CHARS);
+}
+
+function captureMatchPreview(
+  haystack: string,
+  matchIndex: number,
+  matchLength: number
+): { preview: string; remainingAfter: number } {
+  const previewStart = Math.max(0, matchIndex - MATCH_PREVIEW_CONTEXT_CHARS);
+  const previewEnd = Math.min(
+    haystack.length,
+    matchIndex + matchLength + MATCH_PREVIEW_CONTEXT_CHARS
+  );
+  const afterIncluded = previewEnd - (matchIndex + matchLength);
+
+  return {
+    preview: haystack.slice(previewStart, previewEnd),
+    remainingAfter: Math.max(0, MATCH_PREVIEW_CONTEXT_CHARS - afterIncluded)
+  };
+}
+
 function buildSearchMatchFromLines(
   lines: ConsoleLine[],
   matchedLine: ConsoleLine
@@ -264,20 +388,20 @@ function buildSearchMatchFromLines(
 }
 
 export class ProgressiveConsoleExcerptCollector {
-  private carryText = "";
-  private carryStartOffset = 0;
   private lineNumber = 1;
   private readonly contextLines: number;
   private readonly maxMatches: number;
   private readonly tailLineCount: number;
   private readonly prioritizeByQuery: boolean;
   private readonly queryLimit: number;
+  private readonly searchTailChars: number;
   private readonly queries: Array<Required<ProgressiveConsoleExcerptQuery>>;
   private readonly recentLines: ConsoleLine[] = [];
   private readonly tailLines: ConsoleLine[] = [];
   private readonly pendingMatches: PendingMatch[] = [];
   private readonly finalizedMatches: StoredMatch[] = [];
   private lastCoveredLine = 0;
+  private activeLine = createActiveConsoleLine();
 
   constructor(options: ProgressiveConsoleExcerptCollectorOptions) {
     this.contextLines = options.contextLines ?? 8;
@@ -293,35 +417,35 @@ export class ProgressiveConsoleExcerptCollector {
       query: query.query,
       caseSensitive: query.caseSensitive ?? false
     }));
+    this.searchTailChars = Math.max(
+      MATCH_PREVIEW_CONTEXT_CHARS,
+      ...this.queries.map((query) => Math.max(query.query.length - 1, 0))
+    );
   }
 
   appendChunk(text: string, startOffset: number): void {
     if (text.length === 0) {
-      if (this.carryText.length === 0) {
-        this.carryStartOffset = startOffset;
-      }
       return;
     }
 
-    const combinedText = this.carryText + text;
     let cursor = 0;
-    let lineStartOffset = this.carryText.length > 0 ? this.carryStartOffset : startOffset;
+    let segmentStartOffset = startOffset;
 
-    while (cursor < combinedText.length) {
-      const newlineIndex = combinedText.indexOf("\n", cursor);
+    while (cursor < text.length) {
+      const newlineIndex = text.indexOf("\n", cursor);
       if (newlineIndex === -1) {
-        break;
+        const rawSegment = text.slice(cursor);
+        this.appendRawSegment(rawSegment, segmentStartOffset);
+        return;
       }
 
       const nextCursor = newlineIndex + 1;
-      const rawSegment = combinedText.slice(cursor, nextCursor);
-      this.emitLine(rawSegment, lineStartOffset);
-      lineStartOffset += Buffer.byteLength(rawSegment);
+      const rawSegment = text.slice(cursor, nextCursor);
+      this.appendRawSegment(rawSegment, segmentStartOffset);
+      this.emitActiveLine();
+      segmentStartOffset += Buffer.byteLength(rawSegment);
       cursor = nextCursor;
     }
-
-    this.carryText = combinedText.slice(cursor);
-    this.carryStartOffset = lineStartOffset;
   }
 
   canStop(): boolean {
@@ -329,9 +453,8 @@ export class ProgressiveConsoleExcerptCollector {
   }
 
   finish(): { matches: BuildConsoleExcerpt[]; trailingExcerpt: BuildConsoleSearchMatch | null } {
-    if (this.carryText.length > 0) {
-      this.emitLine(this.carryText, this.carryStartOffset);
-      this.carryText = "";
+    if (this.activeLine.totalBytes > 0) {
+      this.emitActiveLine();
     }
 
     while (this.pendingMatches.length > 0) {
@@ -350,13 +473,44 @@ export class ProgressiveConsoleExcerptCollector {
     };
   }
 
-  private emitLine(rawSegment: string, startOffset: number): void {
+  private appendRawSegment(rawSegment: string, startOffset: number): void {
+    if (this.activeLine.startOffset === null) {
+      this.activeLine.startOffset = startOffset;
+    }
+
     const segmentBytes = Buffer.byteLength(rawSegment);
+    const normalizedSegment = normalizeLineText(rawSegment);
+    this.activeLine.totalBytes += segmentBytes;
+    appendRenderedSegment(this.activeLine, normalizedSegment);
+
+    if (this.activeLine.matchPreviewAfterRemaining > 0 && normalizedSegment.length > 0) {
+      const appended = normalizedSegment.slice(0, this.activeLine.matchPreviewAfterRemaining);
+      this.activeLine.matchPreview = (this.activeLine.matchPreview ?? "") + appended;
+      this.activeLine.matchPreviewAfterRemaining -= appended.length;
+    }
+
+    const searchHaystack = this.activeLine.searchTail + normalizedSegment;
+    if (this.activeLine.matchedQueryIndex === null && searchHaystack.length > 0) {
+      const match = findQueryMatch(searchHaystack, this.queries);
+      if (match) {
+        this.activeLine.matchedQueryIndex = match.queryIndex;
+        const preview = captureMatchPreview(searchHaystack, match.index, match.length);
+        this.activeLine.matchPreview = preview.preview;
+        this.activeLine.matchPreviewAfterRemaining = preview.remainingAfter;
+      }
+    }
+
+    this.activeLine.searchTail = searchHaystack.slice(-this.searchTailChars);
+  }
+
+  private emitActiveLine(): void {
+    const startOffset = this.activeLine.startOffset ?? 0;
     const line: ConsoleLine = {
       line: this.lineNumber,
       start: startOffset,
-      end: startOffset + segmentBytes,
-      text: normalizeLineText(rawSegment)
+      end: startOffset + this.activeLine.totalBytes,
+      text: renderTruncatedLine(this.activeLine),
+      matchedQueryIndex: this.activeLine.matchedQueryIndex
     };
     const previousLines = [...this.recentLines];
 
@@ -385,15 +539,11 @@ export class ProgressiveConsoleExcerptCollector {
     );
     const matchStartLine = Math.max(1, line.line - this.contextLines);
     if (this.finalizedMatches.length < this.queryLimit && matchStartLine > coveredThroughLine) {
-      const matchingQuery = this.queries.findIndex((query) =>
-        lineIncludesQuery(line.text, query.query, query.caseSensitive)
-      );
-
-      if (matchingQuery !== -1) {
+      if (line.matchedQueryIndex !== undefined && line.matchedQueryIndex !== null) {
         this.pendingMatches.push({
           excerptLines: [...previousLines, line],
           matchedLine: line,
-          queryIndex: matchingQuery,
+          queryIndex: line.matchedQueryIndex,
           remainingAfter: this.contextLines
         });
 
@@ -417,6 +567,7 @@ export class ProgressiveConsoleExcerptCollector {
     }
 
     this.lineNumber += 1;
+    this.activeLine = createActiveConsoleLine();
   }
 
   private finalizePendingMatch(pending: PendingMatch): void {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { collectFailureExcerpts, searchBuildConsoleText } from "../../src/mcp-server/build-log.js";
+import {
+  collectFailureExcerpts,
+  ProgressiveConsoleExcerptCollector,
+  searchBuildConsoleText
+} from "../../src/mcp-server/build-log.js";
 
 describe("searchBuildConsoleText", () => {
   it("returns excerpt windows with byte offsets", () => {
@@ -54,5 +58,25 @@ describe("searchBuildConsoleText", () => {
         excerpt: ["first", "second", "third"].join("\n")
       }
     ]);
+  });
+
+  it("truncates oversized single-line matches while preserving the match context", () => {
+    const collector = new ProgressiveConsoleExcerptCollector({
+      queries: [{ label: "needle", query: "needle" }],
+      contextLines: 0,
+      maxMatches: 1
+    });
+    const longLine = `${"a".repeat(5000)}needle${"b".repeat(5000)}\n`;
+
+    collector.appendChunk(longLine.slice(0, 4096), 0);
+    collector.appendChunk(longLine.slice(4096), 4096);
+
+    const result = collector.finish();
+
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]?.matchedLine).toContain("needle");
+    expect(result.matches[0]?.matchedLine.length).toBeLessThan(1800);
+    expect(result.matches[0]?.excerpt.length).toBeLessThan(1800);
+    expect(result.matches[0]?.matchedLine).toContain("[...truncated...]");
   });
 });
