@@ -1,6 +1,7 @@
 import type { Build } from "../jenkins/model/build.js";
 import type { ItemType } from "../jenkins/model/item.js";
 import type { ToolRuntime } from "./runtime.js";
+import { searchBuildConsoleText } from "./build-log.js";
 import { buildToOutput, removeNil } from "./serializers.js";
 
 function resolveLastBuildNumber(item: ItemType): number {
@@ -121,6 +122,43 @@ export async function getBuildConsoleTail(
     string,
     unknown
   >;
+}
+
+export async function searchBuildConsole(
+  runtime: ToolRuntime,
+  fullname: string,
+  query: string,
+  number?: number,
+  maxBytes = 256 * 1024,
+  contextLines = 8,
+  maxMatches = 5,
+  caseSensitive = false
+): Promise<Record<string, unknown>> {
+  const jenkins = await runtime.getJenkins();
+
+  let targetNumber = number;
+  if (targetNumber === undefined) {
+    const item = await jenkins.getItem(fullname, 1);
+    targetNumber = resolveLastBuildNumber(item);
+  }
+
+  const tail = await jenkins.getBuildConsoleTail(fullname, targetNumber, maxBytes);
+  return {
+    query,
+    caseSensitive,
+    scannedStart: tail.start,
+    scannedEnd: tail.nextStart,
+    totalBytes: tail.totalBytes,
+    truncated: tail.truncated,
+    matches: searchBuildConsoleText({
+      text: tail.text,
+      baseOffset: tail.start,
+      query,
+      contextLines,
+      maxMatches,
+      caseSensitive
+    })
+  };
 }
 
 export async function getBuildTestReport(

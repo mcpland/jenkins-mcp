@@ -8,6 +8,7 @@ import {
   getBuildConsoleChunk,
   getBuildConsoleOutput,
   getBuildConsoleTail,
+  searchBuildConsole,
   getBuildScripts,
   getBuildTestReport,
   getRunningBuilds,
@@ -281,6 +282,36 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
     },
     async ({ fullname, start, number }) =>
       callTool(async () => getBuildConsoleChunk(runtime, fullname, start, number))
+  );
+
+  server.registerTool(
+    "search_build_console",
+    {
+      description: "Search recent build console output and return matching excerpts.",
+      inputSchema: z.object({
+        fullname: z.string(),
+        query: z.string().min(1),
+        number: z.number().int().optional(),
+        max_bytes: z.number().int().positive().optional(),
+        context_lines: z.number().int().nonnegative().optional(),
+        max_matches: z.number().int().positive().optional(),
+        case_sensitive: z.boolean().optional()
+      }),
+      annotations: { readOnlyHint: true }
+    },
+    async ({ fullname, query, number, max_bytes, context_lines, max_matches, case_sensitive }) =>
+      callTool(async () =>
+        searchBuildConsole(
+          runtime,
+          fullname,
+          query,
+          number,
+          max_bytes,
+          context_lines,
+          max_matches,
+          case_sensitive
+        )
+      )
   );
 
   server.registerTool(

@@ -11,6 +11,7 @@ import {
   getBuildScripts,
   getBuildTestReport,
   getRunningBuilds,
+  searchBuildConsole,
   stopBuild
 } from "../../src/mcp-server/build.js";
 import type { ToolRuntime } from "../../src/mcp-server/runtime.js";
@@ -200,6 +201,51 @@ describe("mcp-server build tools", () => {
     await expect(getBuildTestReport(runtime, "job1")).resolves.toEqual({
       reports: ["report1", "report2"]
     });
+  });
+
+  it("searchBuildConsole searches the tail window", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuildConsoleTail: vi.fn(async () => ({
+        start: 100,
+        nextStart: 176,
+        totalBytes: 176,
+        truncated: true,
+        text: ["compile", "ERROR: boom", "stack"].join("\n")
+      }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+
+    await expect(searchBuildConsole(runtime, "job1", "error")).resolves.toEqual({
+      query: "error",
+      caseSensitive: false,
+      scannedStart: 100,
+      scannedEnd: 176,
+      totalBytes: 176,
+      truncated: true,
+      matches: [
+        {
+          line: 2,
+          start: 100,
+          end: 125,
+          matchedLine: "ERROR: boom",
+          excerpt: ["compile", "ERROR: boom", "stack"].join("\n")
+        }
+      ]
+    });
+
+    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 256 * 1024);
   });
 
   it("stopBuild", async () => {

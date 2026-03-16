@@ -43,6 +43,15 @@ function createRuntime(): ToolRuntime {
       truncated: false,
       text: ""
     })),
+    searchBuildConsole: vi.fn(async () => ({
+      query: "",
+      caseSensitive: false,
+      scannedStart: 0,
+      scannedEnd: 0,
+      totalBytes: 0,
+      truncated: false,
+      matches: []
+    })),
     getBuildTestReport: vi.fn(async () => ({})),
     stopBuild: vi.fn(async () => undefined)
   } as unknown as Jenkins;
@@ -81,5 +90,6 @@ describe("mcp tool registration", () => {
     expect("get_build" in tools).toBe(true);
     expect("get_build_console_tail" in tools).toBe(true);
     expect("get_build_console_chunk" in tools).toBe(true);
+    expect("search_build_console" in tools).toBe(true);
   });
 });

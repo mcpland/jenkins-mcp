@@ -30,6 +30,24 @@ export interface BuildConsoleTail {
   text: string;
 }
 
+export interface BuildConsoleSearchMatch {
+  line: number;
+  start: number;
+  end: number;
+  matchedLine: string;
+  excerpt: string;
+}
+
+export interface BuildConsoleSearchResult {
+  query: string;
+  caseSensitive: boolean;
+  scannedStart: number;
+  scannedEnd: number;
+  totalBytes: number;
+  truncated: boolean;
+  matches: BuildConsoleSearchMatch[];
+}
+
 function toOptionalNumber(value: unknown): number | undefined {
   if (typeof value === "number") {
     return value;
