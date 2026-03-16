@@ -198,6 +198,23 @@ Each provided header overrides the corresponding environment variable for that r
 For large logs, prefer `get_build_console_tail` -> `search_build_console` -> `get_build_console_chunk`.
 `get_build_console_output` remains available as a raw full-output escape hatch.
 
+### Recommended Troubleshooting Flow
+
+For a failed build, prefer this sequence:
+
+1. `get_build` to confirm `result`, `building`, and the target build number.
+2. `get_build_failure_excerpt` to get focused failure snippets plus failing test hints.
+3. `search_build_console` with anchors such as `Caused by:`, `ERROR`, `FAILED`, or a failing test name.
+4. `get_build_console_chunk` to continue reading from a returned `nextStart` offset when the first excerpt is not enough.
+5. `get_build_console_output` only when raw full log export is explicitly needed.
+
+For a running build, prefer this sequence:
+
+1. `get_build` to confirm the build is still running.
+2. `get_build_console_tail` to inspect the latest output window.
+3. `search_build_console` for known error anchors in the recent window.
+4. `get_build_console_chunk` with the last `nextStart` value to keep polling without rereading old output.
+
 ### Node Tools
 
 | Tool              | Description                            | Parameters           | Read-Only |
