@@ -30,6 +30,7 @@ import type { ToolRuntime } from "./runtime.js";
 export interface CreateMcpServerOptions {
   runtime: ToolRuntime;
   readOnly: boolean;
+  allowFullConsoleOutput?: boolean;
 }
 
 function toCallToolResult(value: unknown): CallToolResult {
@@ -66,7 +67,7 @@ async function callTool(handler: () => Promise<unknown>): Promise<CallToolResult
 }
 
 export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServer {
-  const { runtime, readOnly } = options;
+  const { runtime, readOnly, allowFullConsoleOutput = false } = options;
 
   const server = new McpServer({
     name: "mcp-jenkins",
@@ -333,16 +334,18 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
       )
   );
 
-  server.registerTool(
-    "get_build_console_output",
-    {
-      description: "Get raw full console output of a specific build.",
-      inputSchema: z.object({ fullname: z.string(), number: z.number().int().optional() }),
-      annotations: { readOnlyHint: true }
-    },
-    async ({ fullname, number }) =>
-      callTool(async () => getBuildConsoleOutput(runtime, fullname, number))
-  );
+  if (allowFullConsoleOutput) {
+    server.registerTool(
+      "get_build_console_output",
+      {
+        description: "Get raw full console output of a specific build.",
+        inputSchema: z.object({ fullname: z.string(), number: z.number().int().optional() }),
+        annotations: { readOnlyHint: true }
+      },
+      async ({ fullname, number }) =>
+        callTool(async () => getBuildConsoleOutput(runtime, fullname, number))
+    );
+  }
 
   server.registerTool(
     "get_build_test_report",

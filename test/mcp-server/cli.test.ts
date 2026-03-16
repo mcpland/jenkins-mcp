@@ -13,6 +13,7 @@ describe("cli parsing", () => {
     expect(options.jenkinsVerifySsl).toBe(true);
     expect(options.jenkinsSessionSingleton).toBe(true);
     expect(options.readOnly).toBe(false);
+    expect(options.allowFullConsoleOutput).toBe(false);
   });
 
   it("parses explicit options", () => {
@@ -33,7 +34,8 @@ describe("cli parsing", () => {
       "30",
       "--no-jenkins-verify-ssl",
       "--no-jenkins-session-singleton",
-      "--read-only"
+      "--read-only",
+      "--allow-full-console-output"
     ]);
 
     expect(options.transport).toBe("streamable-http");
@@ -46,6 +48,7 @@ describe("cli parsing", () => {
     expect(options.jenkinsVerifySsl).toBe(false);
     expect(options.jenkinsSessionSingleton).toBe(false);
     expect(options.readOnly).toBe(true);
+    expect(options.allowFullConsoleOutput).toBe(true);
   });
 
   it("applies cli environment", () => {
@@ -60,6 +63,7 @@ describe("cli parsing", () => {
         jenkinsVerifySsl: false,
         jenkinsSessionSingleton: false,
         readOnly: false,
+        allowFullConsoleOutput: false,
         toolRegex: "",
         jenkinsUrl: "https://jenkins.example.com",
         jenkinsUsername: "username",

@@ -28,6 +28,7 @@ export interface CliOptions {
   jenkinsTimeout: number;
   jenkinsVerifySsl: boolean;
   readOnly: boolean;
+  allowFullConsoleOutput: boolean;
   toolRegex: string;
   jenkinsSessionSingleton: boolean;
   transport: TransportMode;
@@ -101,7 +102,11 @@ async function startStdioServer(options: CliOptions): Promise<void> {
   const lifespanContext = loadLifespanContextFromEnv(process.env);
   const runtime = new JenkinsRuntime(lifespanContext);
 
-  const server = createJenkinsMcpServer({ runtime, readOnly: options.readOnly });
+  const server = createJenkinsMcpServer({
+    runtime,
+    readOnly: options.readOnly,
+    allowFullConsoleOutput: options.allowFullConsoleOutput
+  });
   const transport = new StdioServerTransport();
 
   await server.connect(transport);
@@ -129,7 +134,11 @@ async function startSseServer(options: CliOptions): Promise<void> {
             lifespanContext,
             extractJenkinsAuthFromHeaders(req.headers)
           );
-          const mcpServer = createJenkinsMcpServer({ runtime, readOnly: options.readOnly });
+          const mcpServer = createJenkinsMcpServer({
+            runtime,
+            readOnly: options.readOnly,
+            allowFullConsoleOutput: options.allowFullConsoleOutput
+          });
           const transport = new SSEServerTransport("/message", res);
 
           transport.onclose = () => {
@@ -221,7 +230,11 @@ async function startStreamableHttpServer(options: CliOptions): Promise<void> {
             lifespanContext,
             extractJenkinsAuthFromHeaders(req.headers)
           );
-          const mcpServer = createJenkinsMcpServer({ runtime, readOnly: options.readOnly });
+          const mcpServer = createJenkinsMcpServer({
+            runtime,
+            readOnly: options.readOnly,
+            allowFullConsoleOutput: options.allowFullConsoleOutput
+          });
 
           const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
@@ -274,6 +287,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
       "jenkins-verify-ssl": { type: "boolean" },
       "no-jenkins-verify-ssl": { type: "boolean" },
       "read-only": { type: "boolean", default: false },
+      "allow-full-console-output": { type: "boolean", default: false },
       "tool-regex": { type: "string", default: "" },
       "jenkins-session-singleton": { type: "boolean" },
       "no-jenkins-session-singleton": { type: "boolean" },
@@ -303,6 +317,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
     jenkinsTimeout: timeout,
     jenkinsVerifySsl,
     readOnly: parsed.values["read-only"],
+    allowFullConsoleOutput: parsed.values["allow-full-console-output"],
     toolRegex: parsed.values["tool-regex"],
     jenkinsSessionSingleton,
     transport,

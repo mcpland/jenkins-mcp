@@ -63,7 +63,11 @@ function createRuntime(): ToolRuntime {
 
 describe("mcp tool registration", () => {
   it("registers write tools when readOnly is false", () => {
-    const server = createJenkinsMcpServer({ runtime: createRuntime(), readOnly: false });
+    const server = createJenkinsMcpServer({
+      runtime: createRuntime(),
+      readOnly: false,
+      allowFullConsoleOutput: true
+    });
     const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
       ._registeredTools;
 
@@ -72,6 +76,7 @@ describe("mcp tool registration", () => {
     expect("set_node_config" in tools).toBe(true);
     expect("cancel_queue_item" in tools).toBe(true);
     expect("stop_build" in tools).toBe(true);
+    expect("get_build_console_output" in tools).toBe(true);
   });
 
   it("skips write tools when readOnly is true", () => {
@@ -88,6 +93,7 @@ describe("mcp tool registration", () => {
     expect("get_item" in tools).toBe(true);
     expect("get_node" in tools).toBe(true);
     expect("get_build" in tools).toBe(true);
+    expect("get_build_console_output" in tools).toBe(false);
     expect("get_build_console_tail" in tools).toBe(true);
     expect("get_build_console_chunk" in tools).toBe(true);
     expect("search_build_console" in tools).toBe(true);

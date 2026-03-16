@@ -129,6 +129,7 @@ jenkins-mcp [options]
 | `--jenkins-verify-ssl` / `--no-jenkins-verify-ssl`               | Verify SSL certificates                               | `true`    |
 | `--jenkins-session-singleton` / `--no-jenkins-session-singleton` | Reuse Jenkins client within session                   | `true`    |
 | `--read-only`                                                    | Only register read-only tools                         | `false`   |
+| `--allow-full-console-output`                                    | Register the unsafe raw full-console-output tool      | `false`   |
 | `--transport`                                                    | Transport mode: `stdio` \| `sse` \| `streamable-http` | `stdio`   |
 | `--host`                                                         | Host for HTTP transports                              | `0.0.0.0` |
 | `--port`                                                         | Port for HTTP transports                              | `9887`    |
@@ -196,7 +197,7 @@ Each provided header overrides the corresponding environment variable for that r
 | `stop_build`                | Stop a running build                        | `fullname`, `number`                                 | No        |
 
 For large logs, prefer `get_build_console_tail` -> `search_build_console` -> `get_build_console_chunk`.
-`get_build_console_output` remains available as a raw full-output escape hatch.
+`get_build_console_output` is disabled by default and only registered when `--allow-full-console-output` is set.
 
 ### Recommended Troubleshooting Flow
 
