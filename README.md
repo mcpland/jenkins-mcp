@@ -183,22 +183,22 @@ Each provided header overrides the corresponding environment variable for that r
 
 ### Build Tools
 
-| Tool                        | Description                                 | Parameters                                           | Read-Only |
-| --------------------------- | ------------------------------------------- | ---------------------------------------------------- | --------- |
-| `get_build`                 | Get build details                           | `fullname`, `number?`                                | Yes       |
-| `get_build_console_tail`    | Get the recent tail of build console output | `fullname`, `number?`, `max_bytes?`                  | Yes       |
-| `get_build_console_chunk`   | Read incremental console output by offset   | `fullname`, `start`, `number?`, `max_bytes?`         | Yes       |
-| `search_build_console`      | Search recent console output with excerpts  | `fullname`, `query`, `number?`, `max_bytes?`, ...    | Yes       |
-| `get_build_failure_excerpt` | Get focused failure excerpts and test hints | `fullname`, `number?`, `max_bytes?`, `max_excerpts?` | Yes       |
-| `get_build_console_output`  | Get raw full console log output             | `fullname`, `number?`                                | Yes       |
-| `get_build_test_report`     | Get test results report                     | `fullname`, `number?`                                | Yes       |
-| `get_build_scripts`         | Extract build scripts (for replay)          | `fullname`, `number?`                                | Yes       |
-| `get_running_builds`        | Get all currently running builds            | —                                                    | Yes       |
-| `stop_build`                | Stop a running build                        | `fullname`, `number`                                 | No        |
+| Tool                        | Description                                                      | Parameters                                           | Read-Only |
+| --------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- | --------- |
+| `get_build`                 | Get build details                                                | `fullname`, `number?`                                | Yes       |
+| `get_build_console_tail`    | Get the recent tail of build console output                      | `fullname`, `number?`, `max_bytes?`                  | Yes       |
+| `get_build_console_chunk`   | Read incremental console output by offset                        | `fullname`, `start`, `number?`, `max_bytes?`         | Yes       |
+| `search_build_console`      | Search console output incrementally with excerpts                | `fullname`, `query`, `number?`, `max_bytes?`, ...    | Yes       |
+| `get_build_failure_excerpt` | Get focused failure excerpts and test hints via incremental scan | `fullname`, `number?`, `max_bytes?`, `max_excerpts?` | Yes       |
+| `get_build_console_output`  | Get raw full console log output                                  | `fullname`, `number?`                                | Yes       |
+| `get_build_test_report`     | Get test results report                                          | `fullname`, `number?`                                | Yes       |
+| `get_build_scripts`         | Extract build scripts (for replay)                               | `fullname`, `number?`                                | Yes       |
+| `get_running_builds`        | Get all currently running builds                                 | —                                                    | Yes       |
+| `stop_build`                | Stop a running build                                             | `fullname`, `number`                                 | No        |
 
 For large logs, prefer `get_build_console_tail` -> `search_build_console` -> `get_build_console_chunk`.
 `get_build_console_output` is disabled by default and only registered when `--allow-full-console-output` is set.
-Large-log helper tools enforce server-side byte ceilings even if the caller asks for more.
+Large-log helper tools enforce server-side byte ceilings even if the caller asks for more, and search-style tools scan logs incrementally instead of fetching `consoleText`.
 
 ### Recommended Troubleshooting Flow
 

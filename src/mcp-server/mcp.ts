@@ -290,7 +290,7 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
   server.registerTool(
     "search_build_console",
     {
-      description: "Search recent build console output and return matching excerpts.",
+      description: "Search build console output incrementally and return matching excerpts.",
       inputSchema: z.object({
         fullname: z.string(),
         query: z.string().min(1),
@@ -320,7 +320,7 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
   server.registerTool(
     "get_build_failure_excerpt",
     {
-      description: "Get focused failure excerpts and failing tests for a specific build.",
+      description: "Get focused failure excerpts and failing tests via incremental log scanning.",
       inputSchema: z.object({
         fullname: z.string(),
         number: z.number().int().optional(),

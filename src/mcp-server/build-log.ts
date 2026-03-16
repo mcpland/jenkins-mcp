@@ -24,7 +24,32 @@ export interface CollectFailureExcerptsOptions {
   queries?: string[];
 }
 
-const DEFAULT_FAILURE_QUERIES = [
+export interface ProgressiveConsoleExcerptQuery {
+  label: string;
+  query: string;
+  caseSensitive?: boolean;
+}
+
+export interface ProgressiveConsoleExcerptCollectorOptions {
+  queries: ProgressiveConsoleExcerptQuery[];
+  contextLines?: number;
+  maxMatches?: number;
+  tailLineCount?: number;
+  prioritizeByQuery?: boolean;
+}
+
+interface PendingMatch {
+  excerptLines: ConsoleLine[];
+  matchedLine: ConsoleLine;
+  queryIndex: number;
+  remainingAfter: number;
+}
+
+interface StoredMatch extends BuildConsoleExcerpt {
+  queryIndex: number;
+}
+
+export const DEFAULT_FAILURE_QUERIES = [
   "Caused by:",
   "script returned exit code",
   "BUILD FAILURE",
@@ -209,4 +234,225 @@ export function collectFailureExcerpts(
   }
 
   return excerpts;
+}
+
+function normalizeLineText(rawSegment: string): string {
+  return rawSegment.endsWith("\r\n")
+    ? rawSegment.slice(0, -2)
+    : rawSegment.endsWith("\n")
+      ? rawSegment.slice(0, -1)
+      : rawSegment;
+}
+
+function buildSearchMatchFromLines(
+  lines: ConsoleLine[],
+  matchedLine: ConsoleLine
+): BuildConsoleSearchMatch {
+  const firstLine = lines[0];
+  const lastLine = lines.at(-1);
+  if (!(firstLine && lastLine)) {
+    throw new Error("Cannot build console excerpt from empty lines.");
+  }
+
+  return {
+    line: matchedLine.line,
+    start: firstLine.start,
+    end: lastLine.end,
+    matchedLine: matchedLine.text,
+    excerpt: lines.map((line) => line.text).join("\n")
+  };
+}
+
+export class ProgressiveConsoleExcerptCollector {
+  private carryText = "";
+  private carryStartOffset = 0;
+  private lineNumber = 1;
+  private readonly contextLines: number;
+  private readonly maxMatches: number;
+  private readonly tailLineCount: number;
+  private readonly prioritizeByQuery: boolean;
+  private readonly queryLimit: number;
+  private readonly queries: Array<Required<ProgressiveConsoleExcerptQuery>>;
+  private readonly recentLines: ConsoleLine[] = [];
+  private readonly tailLines: ConsoleLine[] = [];
+  private readonly pendingMatches: PendingMatch[] = [];
+  private readonly finalizedMatches: StoredMatch[] = [];
+  private lastCoveredLine = 0;
+
+  constructor(options: ProgressiveConsoleExcerptCollectorOptions) {
+    this.contextLines = options.contextLines ?? 8;
+    this.maxMatches = options.maxMatches ?? 5;
+    this.tailLineCount = options.tailLineCount ?? 40;
+    this.prioritizeByQuery = options.prioritizeByQuery ?? false;
+    this.queryLimit = Math.max(
+      this.maxMatches,
+      this.maxMatches * Math.max(options.queries.length, 1)
+    );
+    this.queries = options.queries.map((query) => ({
+      label: query.label,
+      query: query.query,
+      caseSensitive: query.caseSensitive ?? false
+    }));
+  }
+
+  appendChunk(text: string, startOffset: number): void {
+    if (text.length === 0) {
+      if (this.carryText.length === 0) {
+        this.carryStartOffset = startOffset;
+      }
+      return;
+    }
+
+    const combinedText = this.carryText + text;
+    let cursor = 0;
+    let lineStartOffset = this.carryText.length > 0 ? this.carryStartOffset : startOffset;
+
+    while (cursor < combinedText.length) {
+      const newlineIndex = combinedText.indexOf("\n", cursor);
+      if (newlineIndex === -1) {
+        break;
+      }
+
+      const nextCursor = newlineIndex + 1;
+      const rawSegment = combinedText.slice(cursor, nextCursor);
+      this.emitLine(rawSegment, lineStartOffset);
+      lineStartOffset += Buffer.byteLength(rawSegment);
+      cursor = nextCursor;
+    }
+
+    this.carryText = combinedText.slice(cursor);
+    this.carryStartOffset = lineStartOffset;
+  }
+
+  canStop(): boolean {
+    return this.pendingMatches.length === 0 && this.finalizedMatches.length >= this.maxMatches;
+  }
+
+  finish(): { matches: BuildConsoleExcerpt[]; trailingExcerpt: BuildConsoleSearchMatch | null } {
+    if (this.carryText.length > 0) {
+      this.emitLine(this.carryText, this.carryStartOffset);
+      this.carryText = "";
+    }
+
+    while (this.pendingMatches.length > 0) {
+      const pending = this.pendingMatches.shift();
+      if (!pending) {
+        break;
+      }
+
+      this.finalizePendingMatch(pending);
+    }
+
+    const matches = this.selectMatches();
+    return {
+      matches,
+      trailingExcerpt: matches.length === 0 ? this.getTrailingExcerpt() : null
+    };
+  }
+
+  private emitLine(rawSegment: string, startOffset: number): void {
+    const segmentBytes = Buffer.byteLength(rawSegment);
+    const line: ConsoleLine = {
+      line: this.lineNumber,
+      start: startOffset,
+      end: startOffset + segmentBytes,
+      text: normalizeLineText(rawSegment)
+    };
+    const previousLines = [...this.recentLines];
+
+    for (const pending of this.pendingMatches) {
+      pending.excerptLines.push(line);
+      pending.remainingAfter -= 1;
+    }
+
+    while (this.pendingMatches.length > 0) {
+      const nextPending = this.pendingMatches[0];
+      if (!nextPending || nextPending.remainingAfter > 0) {
+        break;
+      }
+
+      const pending = this.pendingMatches.shift();
+      if (!pending) {
+        break;
+      }
+
+      this.finalizePendingMatch(pending);
+    }
+
+    const coveredThroughLine = Math.max(
+      this.lastCoveredLine,
+      ...this.pendingMatches.map((pending) => pending.matchedLine.line + this.contextLines)
+    );
+    const matchStartLine = Math.max(1, line.line - this.contextLines);
+    if (this.finalizedMatches.length < this.queryLimit && matchStartLine > coveredThroughLine) {
+      const matchingQuery = this.queries.findIndex((query) =>
+        lineIncludesQuery(line.text, query.query, query.caseSensitive)
+      );
+
+      if (matchingQuery !== -1) {
+        this.pendingMatches.push({
+          excerptLines: [...previousLines, line],
+          matchedLine: line,
+          queryIndex: matchingQuery,
+          remainingAfter: this.contextLines
+        });
+
+        if (this.contextLines === 0) {
+          const pending = this.pendingMatches.shift();
+          if (pending) {
+            this.finalizePendingMatch(pending);
+          }
+        }
+      }
+    }
+
+    this.recentLines.push(line);
+    while (this.recentLines.length > this.contextLines) {
+      this.recentLines.shift();
+    }
+
+    this.tailLines.push(line);
+    while (this.tailLines.length > this.tailLineCount) {
+      this.tailLines.shift();
+    }
+
+    this.lineNumber += 1;
+  }
+
+  private finalizePendingMatch(pending: PendingMatch): void {
+    const query = this.queries[pending.queryIndex];
+    if (!query) {
+      return;
+    }
+
+    const match = buildSearchMatchFromLines(pending.excerptLines, pending.matchedLine);
+    this.finalizedMatches.push({
+      source: "pattern",
+      label: query.label,
+      queryIndex: pending.queryIndex,
+      ...match
+    });
+    this.lastCoveredLine = Math.max(this.lastCoveredLine, pending.excerptLines.at(-1)?.line ?? 0);
+  }
+
+  private getTrailingExcerpt(): BuildConsoleSearchMatch | null {
+    if (this.tailLines.length === 0) {
+      return null;
+    }
+
+    return buildSearchMatchFromLines(this.tailLines, this.tailLines.at(-1) as ConsoleLine);
+  }
+
+  private selectMatches(): BuildConsoleExcerpt[] {
+    const matches = [...this.finalizedMatches];
+    matches.sort((left, right) => {
+      if (this.prioritizeByQuery && left.queryIndex !== right.queryIndex) {
+        return left.queryIndex - right.queryIndex;
+      }
+
+      return left.start - right.start;
+    });
+
+    return matches.slice(0, this.maxMatches).map(({ queryIndex: _queryIndex, ...match }) => match);
+  }
 }

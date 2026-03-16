@@ -201,13 +201,6 @@ describe("mcp-server build tools", () => {
         completed: true,
         text: ""
       })),
-      getBuildConsoleTail: vi.fn(async () => ({
-        start: 0,
-        nextStart: 0,
-        totalBytes: 0,
-        truncated: false,
-        text: ""
-      })),
       getBuild: vi.fn(async () => ({ number: 1, url: "1" })),
       getBuildTestReport: vi.fn(async () => ({ suites: [] }))
     } satisfies Partial<Jenkins>;
@@ -218,9 +211,9 @@ describe("mcp-server build tools", () => {
     await searchBuildConsole(runtime, "job1", "error", undefined, 1024 * 1024, 999, 999);
     await getBuildFailureExcerpt(runtime, "job1", undefined, 1024 * 1024, 999);
 
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenCalledWith("job1", 1, 0, 64 * 1024);
-    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenNthCalledWith(1, "job1", 1, 128 * 1024);
-    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenNthCalledWith(2, "job1", 1, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 64 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 0, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(3, "job1", 1, 0, 128 * 1024);
   });
 
   it("getBuildTestReport defaults to last build number", async () => {
@@ -246,7 +239,7 @@ describe("mcp-server build tools", () => {
     });
   });
 
-  it("searchBuildConsole searches the tail window", async () => {
+  it("searchBuildConsole scans progressive chunks", async () => {
     const item: Job = {
       kind: "Job",
       class_: "Job",
@@ -259,13 +252,22 @@ describe("mcp-server build tools", () => {
 
     const jenkinsMock = {
       getItem: vi.fn(async () => item),
-      getBuildConsoleTail: vi.fn(async () => ({
-        start: 100,
-        nextStart: 176,
-        totalBytes: 176,
-        truncated: true,
-        text: ["compile", "ERROR: boom", "stack"].join("\n")
-      }))
+      getBuildConsoleChunk: vi
+        .fn()
+        .mockResolvedValueOnce({
+          start: 0,
+          nextStart: 8,
+          hasMore: true,
+          completed: false,
+          text: "compile\n"
+        })
+        .mockResolvedValueOnce({
+          start: 8,
+          nextStart: 19,
+          hasMore: false,
+          completed: true,
+          text: "ERROR\nstack"
+        })
     } satisfies Partial<Jenkins>;
 
     const runtime = createRuntime(jenkinsMock);
@@ -273,22 +275,23 @@ describe("mcp-server build tools", () => {
     await expect(searchBuildConsole(runtime, "job1", "error")).resolves.toEqual({
       query: "error",
       caseSensitive: false,
-      scannedStart: 100,
-      scannedEnd: 176,
-      totalBytes: 176,
-      truncated: true,
+      scannedStart: 0,
+      scannedEnd: 19,
+      totalBytes: 19,
+      truncated: false,
       matches: [
         {
           line: 2,
-          start: 100,
-          end: 125,
-          matchedLine: "ERROR: boom",
-          excerpt: ["compile", "ERROR: boom", "stack"].join("\n")
+          start: 0,
+          end: 19,
+          matchedLine: "ERROR",
+          excerpt: ["compile", "ERROR", "stack"].join("\n")
         }
       ]
     });
 
-    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 8, 128 * 1024);
   });
 
   it("getBuildFailureExcerpt combines build metadata, tests, and excerpts", async () => {
@@ -312,13 +315,22 @@ describe("mcp-server build tools", () => {
     const jenkinsMock = {
       getItem: vi.fn(async () => item),
       getBuild: vi.fn(async () => build),
-      getBuildConsoleTail: vi.fn(async () => ({
-        start: 100,
-        nextStart: 176,
-        totalBytes: 176,
-        truncated: true,
-        text: ["compile", "Caused by: boom", "stack"].join("\n")
-      })),
+      getBuildConsoleChunk: vi
+        .fn()
+        .mockResolvedValueOnce({
+          start: 0,
+          nextStart: 6,
+          hasMore: true,
+          completed: false,
+          text: "build\n"
+        })
+        .mockResolvedValueOnce({
+          start: 6,
+          nextStart: 27,
+          hasMore: false,
+          completed: true,
+          text: "Caused by: boom\nstack"
+        }),
       getBuildTestReport: vi.fn(async () => ({
         suites: [
           {
@@ -346,11 +358,11 @@ describe("mcp-server build tools", () => {
         result: "FAILURE",
         timestamp: 1234567890
       },
-      tail: {
-        start: 100,
-        nextStart: 176,
-        totalBytes: 176,
-        truncated: true
+      scan: {
+        start: 0,
+        nextStart: 27,
+        totalBytes: 27,
+        truncated: false
       },
       failingTests: [
         {
@@ -366,13 +378,16 @@ describe("mcp-server build tools", () => {
           source: "pattern",
           label: "Caused by:",
           line: 2,
-          start: 100,
-          end: 129,
+          start: 0,
+          end: 27,
           matchedLine: "Caused by: boom",
-          excerpt: ["compile", "Caused by: boom", "stack"].join("\n")
+          excerpt: ["build", "Caused by: boom", "stack"].join("\n")
         }
       ]
     });
+
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 6, 128 * 1024);
   });
 
   it("stopBuild", async () => {
