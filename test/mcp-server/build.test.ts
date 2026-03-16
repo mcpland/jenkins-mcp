@@ -5,7 +5,9 @@ import type { Job } from "../../src/jenkins/model/item.js";
 import type { Jenkins } from "../../src/jenkins/rest-client.js";
 import {
   getBuild,
+  getBuildConsoleChunk,
   getBuildConsoleOutput,
+  getBuildConsoleTail,
   getBuildScripts,
   getBuildTestReport,
   getRunningBuilds,
@@ -105,6 +107,76 @@ describe("mcp-server build tools", () => {
     const runtime = createRuntime(jenkinsMock);
 
     await expect(getBuildConsoleOutput(runtime, "job1")).resolves.toBe("Console output here");
+  });
+
+  it("getBuildConsoleChunk defaults to last build number", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuildConsoleChunk: vi.fn(async () => ({
+        start: 120,
+        nextStart: 180,
+        hasMore: true,
+        completed: false,
+        text: "new chunk"
+      }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+
+    await expect(getBuildConsoleChunk(runtime, "job1", 120)).resolves.toEqual({
+      start: 120,
+      nextStart: 180,
+      hasMore: true,
+      completed: false,
+      text: "new chunk"
+    });
+
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenCalledWith("job1", 1, 120);
+  });
+
+  it("getBuildConsoleTail defaults to last build number", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuildConsoleTail: vi.fn(async () => ({
+        start: 16,
+        nextStart: 32,
+        totalBytes: 32,
+        truncated: true,
+        text: "tail"
+      }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+
+    await expect(getBuildConsoleTail(runtime, "job1", undefined, 16)).resolves.toEqual({
+      start: 16,
+      nextStart: 32,
+      totalBytes: 32,
+      truncated: true,
+      text: "tail"
+    });
+
+    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 16);
   });
 
   it("getBuildTestReport defaults to last build number", async () => {

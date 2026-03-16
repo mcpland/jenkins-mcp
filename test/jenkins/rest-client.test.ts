@@ -414,20 +414,69 @@ describe("Build operations", () => {
     });
   });
 
-  it("gets console output and stop build", async () => {
+  it("gets console output", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response("Console output here", { status: 200 }))
-      .mockResolvedValueOnce(jsonResponse({}));
+      .mockResolvedValueOnce(new Response("Console output here", { status: 200 }));
 
     const jenkins = createClient(fetchMock);
 
     await expect(jenkins.getBuildConsoleOutput("example-job", 1)).resolves.toBe(
       "Console output here"
     );
+  });
+
+  it("gets console chunk", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("partial log", {
+        status: 200,
+        headers: {
+          "x-text-size": "120",
+          "x-more-data": "true"
+        }
+      })
+    );
+
+    const jenkins = createClient(fetchMock);
+
+    await expect(jenkins.getBuildConsoleChunk("example-job", 1, 80)).resolves.toEqual({
+      start: 80,
+      nextStart: 120,
+      hasMore: true,
+      completed: false,
+      text: "partial log"
+    });
+
+    const [input] = fetchMock.mock.calls[0] as [FetchInput | URL, RequestInit];
+    expect(getUrlFromFetchInput(input)).toBe(
+      "https://example.com/job/example-job/1/logText/progressiveText?start=80"
+    );
+  });
+
+  it("gets console tail without buffering the full log", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("0123456789abcdef", { status: 200 }));
+
+    const jenkins = createClient(fetchMock);
+
+    await expect(jenkins.getBuildConsoleTail("example-job", 1, 5)).resolves.toEqual({
+      start: 11,
+      nextStart: 16,
+      totalBytes: 16,
+      truncated: true,
+      text: "bcdef"
+    });
+  });
+
+  it("stops build", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({}));
+
+    const jenkins = createClient(fetchMock);
+
     await jenkins.stopBuild("example-job", 42);
 
-    const [input] = fetchMock.mock.calls[1] as [FetchInput | URL, RequestInit];
+    const [input] = fetchMock.mock.calls[0] as [FetchInput | URL, RequestInit];
     expect(getUrlFromFetchInput(input)).toBe("https://example.com/job/example-job/42/stop");
   });
 

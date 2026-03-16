@@ -54,6 +54,9 @@ export const NODE_CONFIG = new RestEndpoint("computer/{name}/config.xml");
 
 export const BUILD = new RestEndpoint("{folder}job/{name}/{number}/api/json?depth={depth}");
 export const BUILD_CONSOLE_OUTPUT = new RestEndpoint("{folder}job/{name}/{number}/consoleText");
+export const BUILD_PROGRESSIVE_LOG = new RestEndpoint(
+  "{folder}job/{name}/{number}/logText/progressiveText"
+);
 export const BUILD_STOP = new RestEndpoint("{folder}job/{name}/{number}/stop");
 export const BUILD_REPLAY = new RestEndpoint("{folder}job/{name}/{number}/replay");
 export const BUILD_TEST_REPORT = new RestEndpoint(

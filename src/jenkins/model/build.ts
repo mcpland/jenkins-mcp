@@ -14,6 +14,22 @@ export interface BuildReplay {
   scripts: string[];
 }
 
+export interface BuildConsoleChunk {
+  start: number;
+  nextStart: number;
+  hasMore: boolean;
+  completed: boolean;
+  text: string;
+}
+
+export interface BuildConsoleTail {
+  start: number;
+  nextStart: number;
+  totalBytes: number;
+  truncated: boolean;
+  text: string;
+}
+
 function toOptionalNumber(value: unknown): number | undefined {
   if (typeof value === "number") {
     return value;

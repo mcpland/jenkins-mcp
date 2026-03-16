@@ -83,6 +83,46 @@ export async function getBuildConsoleOutput(
   return jenkins.getBuildConsoleOutput(fullname, targetNumber);
 }
 
+export async function getBuildConsoleChunk(
+  runtime: ToolRuntime,
+  fullname: string,
+  start: number,
+  number?: number
+): Promise<Record<string, unknown>> {
+  const jenkins = await runtime.getJenkins();
+
+  let targetNumber = number;
+  if (targetNumber === undefined) {
+    const item = await jenkins.getItem(fullname, 1);
+    targetNumber = resolveLastBuildNumber(item);
+  }
+
+  return removeNil(await jenkins.getBuildConsoleChunk(fullname, targetNumber, start)) as Record<
+    string,
+    unknown
+  >;
+}
+
+export async function getBuildConsoleTail(
+  runtime: ToolRuntime,
+  fullname: string,
+  number?: number,
+  maxBytes = 64 * 1024
+): Promise<Record<string, unknown>> {
+  const jenkins = await runtime.getJenkins();
+
+  let targetNumber = number;
+  if (targetNumber === undefined) {
+    const item = await jenkins.getItem(fullname, 1);
+    targetNumber = resolveLastBuildNumber(item);
+  }
+
+  return removeNil(await jenkins.getBuildConsoleTail(fullname, targetNumber, maxBytes)) as Record<
+    string,
+    unknown
+  >;
+}
+
 export async function getBuildTestReport(
   runtime: ToolRuntime,
   fullname: string,

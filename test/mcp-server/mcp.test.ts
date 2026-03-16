@@ -28,7 +28,21 @@ function createRuntime(): ToolRuntime {
     getRunningBuilds: vi.fn(async () => []),
     getBuild: vi.fn(async () => ({ number: 1, url: "u" })),
     getBuildReplay: vi.fn(async () => ({ scripts: [] })),
+    getBuildConsoleChunk: vi.fn(async () => ({
+      start: 0,
+      nextStart: 0,
+      hasMore: false,
+      completed: true,
+      text: ""
+    })),
     getBuildConsoleOutput: vi.fn(async () => ""),
+    getBuildConsoleTail: vi.fn(async () => ({
+      start: 0,
+      nextStart: 0,
+      totalBytes: 0,
+      truncated: false,
+      text: ""
+    })),
     getBuildTestReport: vi.fn(async () => ({})),
     stopBuild: vi.fn(async () => undefined)
   } as unknown as Jenkins;
@@ -65,5 +79,7 @@ describe("mcp tool registration", () => {
     expect("get_item" in tools).toBe(true);
     expect("get_node" in tools).toBe(true);
     expect("get_build" in tools).toBe(true);
+    expect("get_build_console_tail" in tools).toBe(true);
+    expect("get_build_console_chunk" in tools).toBe(true);
   });
 });

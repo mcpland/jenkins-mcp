@@ -5,7 +5,9 @@ import { z } from "zod";
 import { getPackageVersion } from "../version.js";
 import {
   getBuild,
+  getBuildConsoleChunk,
   getBuildConsoleOutput,
+  getBuildConsoleTail,
   getBuildScripts,
   getBuildTestReport,
   getRunningBuilds,
@@ -249,6 +251,36 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
       annotations: { readOnlyHint: true }
     },
     async ({ fullname, number }) => callTool(async () => getBuildScripts(runtime, fullname, number))
+  );
+
+  server.registerTool(
+    "get_build_console_tail",
+    {
+      description: "Get the tail of a specific build console output.",
+      inputSchema: z.object({
+        fullname: z.string(),
+        number: z.number().int().optional(),
+        max_bytes: z.number().int().positive().optional()
+      }),
+      annotations: { readOnlyHint: true }
+    },
+    async ({ fullname, number, max_bytes }) =>
+      callTool(async () => getBuildConsoleTail(runtime, fullname, number, max_bytes))
+  );
+
+  server.registerTool(
+    "get_build_console_chunk",
+    {
+      description: "Read incremental console output from a specific byte offset.",
+      inputSchema: z.object({
+        fullname: z.string(),
+        start: z.number().int().nonnegative(),
+        number: z.number().int().optional()
+      }),
+      annotations: { readOnlyHint: true }
+    },
+    async ({ fullname, start, number }) =>
+      callTool(async () => getBuildConsoleChunk(runtime, fullname, start, number))
   );
 
   server.registerTool(

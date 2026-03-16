@@ -1,4 +1,11 @@
-import { type Build, type BuildReplay, parseBuild, parseBuildReplay } from "./model/build.js";
+import {
+  type Build,
+  type BuildConsoleChunk,
+  type BuildConsoleTail,
+  type BuildReplay,
+  parseBuild,
+  parseBuildReplay
+} from "./model/build.js";
 import { type ItemType, isColorItem, serializeItem } from "./model/item.js";
 import { type Node, parseNode } from "./model/node.js";
 import { type Queue, type QueueItem, parseQueue, parseQueueItem } from "./model/queue.js";
@@ -6,6 +13,7 @@ import { Agent } from "undici";
 import {
   BUILD,
   BUILD_CONSOLE_OUTPUT,
+  BUILD_PROGRESSIVE_LOG,
   BUILD_REPLAY,
   BUILD_STOP,
   BUILD_TEST_REPORT,
@@ -74,6 +82,96 @@ function toBuildReplayFromHtml(html: string): BuildReplay {
   }
 
   return parseBuildReplay({ scripts });
+}
+
+function parseHeaderInteger(value: string | null): number | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function parseHeaderBoolean(value: string | null): boolean | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return undefined;
+}
+
+async function readTailText(response: Response, maxBytes: number): Promise<BuildConsoleTail> {
+  const body = response.body;
+  if (!body) {
+    return {
+      start: 0,
+      nextStart: 0,
+      totalBytes: 0,
+      truncated: false,
+      text: ""
+    };
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    if (!value || value.byteLength === 0) {
+      continue;
+    }
+
+    const chunk = new Uint8Array(value);
+    chunks.push(chunk);
+    bufferedBytes += chunk.byteLength;
+    totalBytes += chunk.byteLength;
+
+    while (bufferedBytes > maxBytes && chunks.length > 0) {
+      const head = chunks[0];
+      if (!head) {
+        break;
+      }
+
+      const overflow = bufferedBytes - maxBytes;
+      if (overflow >= head.byteLength) {
+        chunks.shift();
+        bufferedBytes -= head.byteLength;
+      } else {
+        chunks[0] = head.slice(overflow);
+        bufferedBytes -= overflow;
+      }
+    }
+  }
+
+  const tail = new Uint8Array(bufferedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    tail.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return {
+    start: totalBytes - bufferedBytes,
+    nextStart: totalBytes,
+    totalBytes,
+    truncated: totalBytes > bufferedBytes,
+    text: new TextDecoder().decode(tail)
+  };
 }
 
 export class Jenkins {
@@ -266,6 +364,42 @@ export class Jenkins {
     const [folder, name] = this.parseFullname(fullname);
     const response = await this.request("GET", BUILD_CONSOLE_OUTPUT.call({ folder, name, number }));
     return response.text();
+  }
+
+  async getBuildConsoleChunk(
+    fullname: string,
+    number: number,
+    start: number
+  ): Promise<BuildConsoleChunk> {
+    const [folder, name] = this.parseFullname(fullname);
+    const response = await this.request(
+      "GET",
+      BUILD_PROGRESSIVE_LOG.call({ folder, name, number }),
+      {
+        params: { start }
+      }
+    );
+    const text = await response.text();
+    const nextStart = parseHeaderInteger(response.headers.get("x-text-size")) ?? start;
+    const hasMore = parseHeaderBoolean(response.headers.get("x-more-data")) ?? false;
+
+    return {
+      start,
+      nextStart,
+      hasMore,
+      completed: !hasMore,
+      text
+    };
+  }
+
+  async getBuildConsoleTail(
+    fullname: string,
+    number: number,
+    maxBytes = 64 * 1024
+  ): Promise<BuildConsoleTail> {
+    const [folder, name] = this.parseFullname(fullname);
+    const response = await this.request("GET", BUILD_CONSOLE_OUTPUT.call({ folder, name, number }));
+    return readTailText(response, Math.max(1, Math.trunc(maxBytes)));
   }
 
   async stopBuild(fullname: string, number: number): Promise<void> {
