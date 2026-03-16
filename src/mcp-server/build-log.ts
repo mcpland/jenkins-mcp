@@ -1,4 +1,4 @@
-import type { BuildConsoleSearchMatch } from "../jenkins/model/build.js";
+import type { BuildConsoleExcerpt, BuildConsoleSearchMatch } from "../jenkins/model/build.js";
 
 interface ConsoleLine {
   line: number;
@@ -15,6 +15,25 @@ export interface SearchBuildConsoleTextOptions {
   maxMatches?: number;
   caseSensitive?: boolean;
 }
+
+export interface CollectFailureExcerptsOptions {
+  text: string;
+  baseOffset?: number;
+  maxExcerpts?: number;
+  contextLines?: number;
+  queries?: string[];
+}
+
+const DEFAULT_FAILURE_QUERIES = [
+  "Caused by:",
+  "script returned exit code",
+  "BUILD FAILURE",
+  "AbortException",
+  "npm ERR!",
+  "Exception",
+  "ERROR",
+  "FAILED"
+];
 
 function splitConsoleLines(text: string, baseOffset: number): ConsoleLine[] {
   const lines: ConsoleLine[] = [];
@@ -108,4 +127,86 @@ export function searchBuildConsoleText(
   }
 
   return matches;
+}
+
+export function getTrailingConsoleExcerpt(
+  text: string,
+  baseOffset = 0,
+  lineCount = 40
+): BuildConsoleSearchMatch | null {
+  const lines = splitConsoleLines(text, baseOffset);
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const startIndex = Math.max(0, lines.length - lineCount);
+  const excerptLines = lines.slice(startIndex);
+  const firstLine = excerptLines[0];
+  const lastLine = excerptLines.at(-1);
+  if (!(firstLine && lastLine)) {
+    return null;
+  }
+
+  return {
+    line: lastLine.line,
+    start: firstLine.start,
+    end: lastLine.end,
+    matchedLine: lastLine.text,
+    excerpt: excerptLines.map((excerptLine) => excerptLine.text).join("\n")
+  };
+}
+
+export function collectFailureExcerpts(
+  options: CollectFailureExcerptsOptions
+): BuildConsoleExcerpt[] {
+  const {
+    text,
+    baseOffset = 0,
+    maxExcerpts = 3,
+    contextLines = 12,
+    queries = DEFAULT_FAILURE_QUERIES
+  } = options;
+  const excerpts: BuildConsoleExcerpt[] = [];
+  const seenRanges = new Set<string>();
+
+  for (const query of queries) {
+    const matches = searchBuildConsoleText({
+      text,
+      baseOffset,
+      query,
+      contextLines,
+      maxMatches: maxExcerpts,
+      caseSensitive: false
+    });
+
+    for (const match of matches) {
+      const key = `${match.start}:${match.end}`;
+      if (seenRanges.has(key)) {
+        continue;
+      }
+
+      seenRanges.add(key);
+      excerpts.push({
+        source: "pattern",
+        label: query,
+        ...match
+      });
+
+      if (excerpts.length >= maxExcerpts) {
+        return excerpts;
+      }
+    }
+  }
+
+  const trailingExcerpt =
+    excerpts.length === 0 ? getTrailingConsoleExcerpt(text, baseOffset) : null;
+  if (trailingExcerpt) {
+    excerpts.push({
+      source: "tail",
+      label: "recent tail",
+      ...trailingExcerpt
+    });
+  }
+
+  return excerpts;
 }

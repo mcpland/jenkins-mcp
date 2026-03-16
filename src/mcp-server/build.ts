@@ -1,7 +1,8 @@
 import type { Build } from "../jenkins/model/build.js";
 import type { ItemType } from "../jenkins/model/item.js";
+import { JenkinsHttpError } from "../jenkins/rest-client.js";
 import type { ToolRuntime } from "./runtime.js";
-import { searchBuildConsoleText } from "./build-log.js";
+import { collectFailureExcerpts, searchBuildConsoleText } from "./build-log.js";
 import { buildToOutput, removeNil } from "./serializers.js";
 
 function resolveLastBuildNumber(item: ItemType): number {
@@ -157,6 +158,107 @@ export async function searchBuildConsole(
       contextLines,
       maxMatches,
       caseSensitive
+    })
+  };
+}
+
+function extractFailingTests(
+  report: Record<string, unknown>,
+  limit: number
+): Record<string, unknown>[] {
+  const suites = Array.isArray(report.suites) ? report.suites : [];
+  const failures: Record<string, unknown>[] = [];
+
+  for (const suiteValue of suites) {
+    if (!(suiteValue && typeof suiteValue === "object")) {
+      continue;
+    }
+
+    const suite = suiteValue as Record<string, unknown>;
+    const suiteName = typeof suite.name === "string" ? suite.name : undefined;
+    const cases = Array.isArray(suite.cases) ? suite.cases : [];
+
+    for (const caseValue of cases) {
+      if (!(caseValue && typeof caseValue === "object")) {
+        continue;
+      }
+
+      const testCase = caseValue as Record<string, unknown>;
+      const status = typeof testCase.status === "string" ? testCase.status : undefined;
+      const hasErrorDetails =
+        typeof testCase.errorDetails === "string" || typeof testCase.errorStackTrace === "string";
+      const isFailure =
+        hasErrorDetails || (status !== undefined && !["PASSED", "SKIPPED"].includes(status));
+
+      if (!isFailure) {
+        continue;
+      }
+
+      failures.push(
+        removeNil({
+          suite: suiteName,
+          name: typeof testCase.name === "string" ? testCase.name : undefined,
+          className: typeof testCase.className === "string" ? testCase.className : undefined,
+          status,
+          errorDetails:
+            typeof testCase.errorDetails === "string" ? testCase.errorDetails : undefined,
+          errorStackTrace:
+            typeof testCase.errorStackTrace === "string" ? testCase.errorStackTrace : undefined
+        }) as Record<string, unknown>
+      );
+
+      if (failures.length >= limit) {
+        return failures;
+      }
+    }
+  }
+
+  return failures;
+}
+
+export async function getBuildFailureExcerpt(
+  runtime: ToolRuntime,
+  fullname: string,
+  number?: number,
+  maxBytes = 128 * 1024,
+  maxExcerpts = 3
+): Promise<Record<string, unknown>> {
+  const jenkins = await runtime.getJenkins();
+
+  let targetNumber = number;
+  if (targetNumber === undefined) {
+    const item = await jenkins.getItem(fullname, 1);
+    targetNumber = resolveLastBuildNumber(item);
+  }
+
+  const [build, tail] = await Promise.all([
+    jenkins.getBuild(fullname, targetNumber),
+    jenkins.getBuildConsoleTail(fullname, targetNumber, maxBytes)
+  ]);
+
+  let failingTests: Record<string, unknown>[] = [];
+  try {
+    const report = await jenkins.getBuildTestReport(fullname, targetNumber);
+    failingTests = extractFailingTests(report, Math.max(maxExcerpts * 2, 6));
+  } catch (error) {
+    if (!(error instanceof JenkinsHttpError && error.status === 404)) {
+      throw error;
+    }
+  }
+
+  return {
+    build: buildToOutput(build),
+    tail: removeNil({
+      start: tail.start,
+      nextStart: tail.nextStart,
+      totalBytes: tail.totalBytes,
+      truncated: tail.truncated
+    }) as Record<string, unknown>,
+    failingTests,
+    excerpts: collectFailureExcerpts({
+      text: tail.text,
+      baseOffset: tail.start,
+      maxExcerpts
     })
   };
 }

@@ -91,5 +91,6 @@ describe("mcp tool registration", () => {
     expect("get_build_console_tail" in tools).toBe(true);
     expect("get_build_console_chunk" in tools).toBe(true);
     expect("search_build_console" in tools).toBe(true);
+    expect("get_build_failure_excerpt" in tools).toBe(true);
   });
 });

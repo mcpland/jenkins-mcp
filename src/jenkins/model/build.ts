@@ -38,6 +38,11 @@ export interface BuildConsoleSearchMatch {
   excerpt: string;
 }
 
+export interface BuildConsoleExcerpt extends BuildConsoleSearchMatch {
+  source: "pattern" | "tail";
+  label: string;
+}
+
 export interface BuildConsoleSearchResult {
   query: string;
   caseSensitive: boolean;

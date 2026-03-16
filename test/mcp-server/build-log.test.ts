@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { searchBuildConsoleText } from "../../src/mcp-server/build-log.js";
+import { collectFailureExcerpts, searchBuildConsoleText } from "../../src/mcp-server/build-log.js";
 
 describe("searchBuildConsoleText", () => {
   it("returns excerpt windows with byte offsets", () => {
@@ -34,5 +34,25 @@ describe("searchBuildConsoleText", () => {
         caseSensitive: true
       })
     ).toHaveLength(1);
+  });
+
+  it("falls back to a trailing excerpt when no failure anchor is found", () => {
+    expect(
+      collectFailureExcerpts({
+        text: ["first", "second", "third"].join("\n"),
+        baseOffset: 50,
+        maxExcerpts: 1
+      })
+    ).toEqual([
+      {
+        source: "tail",
+        label: "recent tail",
+        line: 3,
+        start: 50,
+        end: 68,
+        matchedLine: "third",
+        excerpt: ["first", "second", "third"].join("\n")
+      }
+    ]);
   });
 });

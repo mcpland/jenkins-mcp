@@ -19,7 +19,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that p
 
 ## Features
 
-- **19 MCP Tools** — Full Jenkins automation: jobs, builds, nodes, and queues
+- **23 MCP Tools** — Full Jenkins automation: jobs, builds, nodes, and queues
 - **3 Transport Modes** — `stdio`, `sse`, and `streamable-http` for different deployment scenarios
 - **Read-Only Mode** — Restrict to safe, read-only operations for controlled environments
 - **Per-Request Auth** — HTTP header-based Jenkins auth for multi-user/multi-tenant setups
@@ -182,14 +182,21 @@ Each provided header overrides the corresponding environment variable for that r
 
 ### Build Tools
 
-| Tool                       | Description                        | Parameters            | Read-Only |
-| -------------------------- | ---------------------------------- | --------------------- | --------- |
-| `get_build`                | Get build details                  | `fullname`, `number?` | Yes       |
-| `get_build_console_output` | Get full console log output        | `fullname`, `number?` | Yes       |
-| `get_build_test_report`    | Get test results report            | `fullname`, `number?` | Yes       |
-| `get_build_scripts`        | Extract build scripts (for replay) | `fullname`, `number?` | Yes       |
-| `get_running_builds`       | Get all currently running builds   | —                     | Yes       |
-| `stop_build`               | Stop a running build               | `fullname`, `number`  | No        |
+| Tool                        | Description                                 | Parameters                                           | Read-Only |
+| --------------------------- | ------------------------------------------- | ---------------------------------------------------- | --------- |
+| `get_build`                 | Get build details                           | `fullname`, `number?`                                | Yes       |
+| `get_build_console_tail`    | Get the recent tail of build console output | `fullname`, `number?`, `max_bytes?`                  | Yes       |
+| `get_build_console_chunk`   | Read incremental console output by offset   | `fullname`, `start`, `number?`                       | Yes       |
+| `search_build_console`      | Search recent console output with excerpts  | `fullname`, `query`, `number?`, `max_bytes?`, ...    | Yes       |
+| `get_build_failure_excerpt` | Get focused failure excerpts and test hints | `fullname`, `number?`, `max_bytes?`, `max_excerpts?` | Yes       |
+| `get_build_console_output`  | Get raw full console log output             | `fullname`, `number?`                                | Yes       |
+| `get_build_test_report`     | Get test results report                     | `fullname`, `number?`                                | Yes       |
+| `get_build_scripts`         | Extract build scripts (for replay)          | `fullname`, `number?`                                | Yes       |
+| `get_running_builds`        | Get all currently running builds            | —                                                    | Yes       |
+| `stop_build`                | Stop a running build                        | `fullname`, `number`                                 | No        |
+
+For large logs, prefer `get_build_console_tail` -> `search_build_console` -> `get_build_console_chunk`.
+`get_build_console_output` remains available as a raw full-output escape hatch.
 
 ### Node Tools
 

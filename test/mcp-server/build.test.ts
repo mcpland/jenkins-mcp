@@ -6,6 +6,7 @@ import type { Jenkins } from "../../src/jenkins/rest-client.js";
 import {
   getBuild,
   getBuildConsoleChunk,
+  getBuildFailureExcerpt,
   getBuildConsoleOutput,
   getBuildConsoleTail,
   getBuildScripts,
@@ -246,6 +247,90 @@ describe("mcp-server build tools", () => {
     });
 
     expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 256 * 1024);
+  });
+
+  it("getBuildFailureExcerpt combines build metadata, tests, and excerpts", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+    const build: Build = {
+      number: 1,
+      url: "1",
+      building: false,
+      result: "FAILURE",
+      timestamp: 1234567890
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuild: vi.fn(async () => build),
+      getBuildConsoleTail: vi.fn(async () => ({
+        start: 100,
+        nextStart: 176,
+        totalBytes: 176,
+        truncated: true,
+        text: ["compile", "Caused by: boom", "stack"].join("\n")
+      })),
+      getBuildTestReport: vi.fn(async () => ({
+        suites: [
+          {
+            name: "Example Suite",
+            cases: [
+              {
+                name: "test_case_1",
+                className: "ExampleTest",
+                status: "FAILED",
+                errorDetails: "AssertionError"
+              }
+            ]
+          }
+        ]
+      }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+
+    await expect(getBuildFailureExcerpt(runtime, "job1")).resolves.toEqual({
+      build: {
+        number: 1,
+        url: "1",
+        building: false,
+        result: "FAILURE",
+        timestamp: 1234567890
+      },
+      tail: {
+        start: 100,
+        nextStart: 176,
+        totalBytes: 176,
+        truncated: true
+      },
+      failingTests: [
+        {
+          suite: "Example Suite",
+          name: "test_case_1",
+          className: "ExampleTest",
+          status: "FAILED",
+          errorDetails: "AssertionError"
+        }
+      ],
+      excerpts: [
+        {
+          source: "pattern",
+          label: "Caused by:",
+          line: 2,
+          start: 100,
+          end: 129,
+          matchedLine: "Caused by: boom",
+          excerpt: ["compile", "Caused by: boom", "stack"].join("\n")
+        }
+      ]
+    });
   });
 
   it("stopBuild", async () => {

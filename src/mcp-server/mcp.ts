@@ -6,12 +6,13 @@ import { getPackageVersion } from "../version.js";
 import {
   getBuild,
   getBuildConsoleChunk,
+  getBuildFailureExcerpt,
   getBuildConsoleOutput,
   getBuildConsoleTail,
-  searchBuildConsole,
   getBuildScripts,
   getBuildTestReport,
   getRunningBuilds,
+  searchBuildConsole,
   stopBuild
 } from "./build.js";
 import {
@@ -315,9 +316,27 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
   );
 
   server.registerTool(
+    "get_build_failure_excerpt",
+    {
+      description: "Get focused failure excerpts and failing tests for a specific build.",
+      inputSchema: z.object({
+        fullname: z.string(),
+        number: z.number().int().optional(),
+        max_bytes: z.number().int().positive().optional(),
+        max_excerpts: z.number().int().positive().optional()
+      }),
+      annotations: { readOnlyHint: true }
+    },
+    async ({ fullname, number, max_bytes, max_excerpts }) =>
+      callTool(async () =>
+        getBuildFailureExcerpt(runtime, fullname, number, max_bytes, max_excerpts)
+      )
+  );
+
+  server.registerTool(
     "get_build_console_output",
     {
-      description: "Get console output of a specific build.",
+      description: "Get raw full console output of a specific build.",
       inputSchema: z.object({ fullname: z.string(), number: z.number().int().optional() }),
       annotations: { readOnlyHint: true }
     },
