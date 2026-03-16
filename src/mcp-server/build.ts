@@ -16,6 +16,8 @@ const MAX_SEARCH_MATCHES = 8;
 const MAX_FAILURE_EXCERPTS = 4;
 const MAX_FAILURE_EXCERPT_BYTES = 128 * 1024;
 const DEFAULT_FAILURE_EXCERPT_BYTES = 128 * 1024;
+const MAX_TEST_FAILURE_TEXT_CHARS = 2048;
+const TRUNCATION_MARKER = "[...truncated...]";
 
 interface ScanBuildConsoleExcerptsOptions {
   chunkBytes: number;
@@ -62,6 +64,22 @@ function clampNonNegativeInt(
 ): number {
   const normalized = value === undefined ? defaultValue : Math.trunc(value);
   return Math.max(0, Math.min(normalized, maxValue));
+}
+
+function truncateTextValue(
+  value: string | undefined,
+  maxChars = MAX_TEST_FAILURE_TEXT_CHARS
+): string | undefined {
+  if (value === undefined || value.length <= maxChars) {
+    return value;
+  }
+
+  const markerBudget = TRUNCATION_MARKER.length * 2;
+  const contextBudget = Math.max(maxChars - markerBudget, 64);
+  const headChars = Math.ceil(contextBudget / 2);
+  const tailChars = Math.floor(contextBudget / 2);
+
+  return `${value.slice(0, headChars)}${TRUNCATION_MARKER}${value.slice(-tailChars)}`;
 }
 
 function runningBuildToOutput(build: Build): Record<string, unknown> {
@@ -175,10 +193,12 @@ function extractFailingTests(
           name: typeof testCase.name === "string" ? testCase.name : undefined,
           className: typeof testCase.className === "string" ? testCase.className : undefined,
           status,
-          errorDetails:
-            typeof testCase.errorDetails === "string" ? testCase.errorDetails : undefined,
-          errorStackTrace:
+          errorDetails: truncateTextValue(
+            typeof testCase.errorDetails === "string" ? testCase.errorDetails : undefined
+          ),
+          errorStackTrace: truncateTextValue(
             typeof testCase.errorStackTrace === "string" ? testCase.errorStackTrace : undefined
+          )
         }) as Record<string, unknown>
       );
 

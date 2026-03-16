@@ -390,6 +390,60 @@ describe("mcp-server build tools", () => {
     expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 6, 128 * 1024);
   });
 
+  it("truncates oversized failure details from the test report", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+    const hugeStack = `${"stack-line\n".repeat(400)}tail`;
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuild: vi.fn(async () => ({
+        number: 1,
+        url: "1",
+        result: "FAILURE"
+      })),
+      getBuildConsoleChunk: vi.fn(async () => ({
+        start: 0,
+        nextStart: 0,
+        hasMore: false,
+        completed: true,
+        text: ""
+      })),
+      getBuildTestReport: vi.fn(async () => ({
+        suites: [
+          {
+            name: "Example Suite",
+            cases: [
+              {
+                name: "test_case_1",
+                className: "ExampleTest",
+                status: "FAILED",
+                errorDetails: hugeStack,
+                errorStackTrace: hugeStack
+              }
+            ]
+          }
+        ]
+      }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+    const result = await getBuildFailureExcerpt(runtime, "job1");
+    const failingTest = (result.failingTests as Array<Record<string, unknown>>)[0];
+
+    expect(failingTest?.errorDetails).toContain("[...truncated...]");
+    expect(failingTest?.errorStackTrace).toContain("[...truncated...]");
+    expect(String(failingTest?.errorDetails).length).toBeLessThanOrEqual(2048);
+    expect(String(failingTest?.errorStackTrace).length).toBeLessThanOrEqual(2048);
+  });
+
   it("stopBuild", async () => {
     const jenkinsMock = {
       stopBuild: vi.fn(async () => undefined)
