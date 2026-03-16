@@ -174,6 +174,72 @@ async function readTailText(response: Response, maxBytes: number): Promise<Build
   };
 }
 
+async function readTextWindow(
+  response: Response,
+  maxBytes: number
+): Promise<{ text: string; bytesRead: number; truncated: boolean }> {
+  const body = response.body;
+  if (!body) {
+    return {
+      text: "",
+      bytesRead: 0,
+      truncated: false
+    };
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytesRead = 0;
+  let truncated = false;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      if (!value || value.byteLength === 0) {
+        continue;
+      }
+
+      const remaining = maxBytes - bytesRead;
+      if (remaining <= 0) {
+        truncated = true;
+        await reader.cancel();
+        break;
+      }
+
+      const chunk = new Uint8Array(value);
+      if (chunk.byteLength > remaining) {
+        chunks.push(chunk.slice(0, remaining));
+        bytesRead += remaining;
+        truncated = true;
+        await reader.cancel();
+        break;
+      }
+
+      chunks.push(chunk);
+      bytesRead += chunk.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const window = new Uint8Array(bytesRead);
+  let offset = 0;
+  for (const chunk of chunks) {
+    window.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return {
+    text: new TextDecoder().decode(window),
+    bytesRead,
+    truncated
+  };
+}
+
 export class Jenkins {
   static readonly DEFAULT_HEADERS = { "Content-Type": "text/xml; charset=utf-8" };
 
@@ -369,7 +435,8 @@ export class Jenkins {
   async getBuildConsoleChunk(
     fullname: string,
     number: number,
-    start: number
+    start: number,
+    maxBytes = 64 * 1024
   ): Promise<BuildConsoleChunk> {
     const [folder, name] = this.parseFullname(fullname);
     const response = await this.request(
@@ -379,16 +446,19 @@ export class Jenkins {
         params: { start }
       }
     );
-    const text = await response.text();
-    const nextStart = parseHeaderInteger(response.headers.get("x-text-size")) ?? start;
+    const limitedChunk = await readTextWindow(response, Math.max(1, Math.trunc(maxBytes)));
+    const textSizeHeader = parseHeaderInteger(response.headers.get("x-text-size"));
     const hasMore = parseHeaderBoolean(response.headers.get("x-more-data")) ?? false;
+    const nextStart = start + limitedChunk.bytesRead;
+    const truncated =
+      textSizeHeader !== undefined ? textSizeHeader > nextStart : limitedChunk.truncated;
 
     return {
       start,
       nextStart,
-      hasMore,
-      completed: !hasMore,
-      text
+      hasMore: hasMore || truncated,
+      completed: !(hasMore || truncated),
+      text: limitedChunk.text
     };
   }
 

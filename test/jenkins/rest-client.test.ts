@@ -428,23 +428,23 @@ describe("Build operations", () => {
 
   it("gets console chunk", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response("partial log", {
+      new Response("0123456789abcdef", {
         status: 200,
         headers: {
-          "x-text-size": "120",
-          "x-more-data": "true"
+          "x-text-size": "96",
+          "x-more-data": "false"
         }
       })
     );
 
     const jenkins = createClient(fetchMock);
 
-    await expect(jenkins.getBuildConsoleChunk("example-job", 1, 80)).resolves.toEqual({
+    await expect(jenkins.getBuildConsoleChunk("example-job", 1, 80, 5)).resolves.toEqual({
       start: 80,
-      nextStart: 120,
+      nextStart: 85,
       hasMore: true,
       completed: false,
-      text: "partial log"
+      text: "01234"
     });
 
     const [input] = fetchMock.mock.calls[0] as [FetchInput | URL, RequestInit];

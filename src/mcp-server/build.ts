@@ -5,6 +5,8 @@ import type { ToolRuntime } from "./runtime.js";
 import { collectFailureExcerpts, searchBuildConsoleText } from "./build-log.js";
 import { buildToOutput, removeNil } from "./serializers.js";
 
+const MAX_BUILD_CONSOLE_CHUNK_BYTES = 64 * 1024;
+const DEFAULT_BUILD_CONSOLE_CHUNK_BYTES = 16 * 1024;
 const MAX_BUILD_CONSOLE_TAIL_BYTES = 64 * 1024;
 const DEFAULT_BUILD_CONSOLE_TAIL_BYTES = 64 * 1024;
 const MAX_SEARCH_BUILD_CONSOLE_BYTES = 128 * 1024;
@@ -117,7 +119,8 @@ export async function getBuildConsoleChunk(
   runtime: ToolRuntime,
   fullname: string,
   start: number,
-  number?: number
+  number?: number,
+  maxBytes?: number
 ): Promise<Record<string, unknown>> {
   const jenkins = await runtime.getJenkins();
 
@@ -127,10 +130,14 @@ export async function getBuildConsoleChunk(
     targetNumber = resolveLastBuildNumber(item);
   }
 
-  return removeNil(await jenkins.getBuildConsoleChunk(fullname, targetNumber, start)) as Record<
-    string,
-    unknown
-  >;
+  return removeNil(
+    await jenkins.getBuildConsoleChunk(
+      fullname,
+      targetNumber,
+      start,
+      clampPositiveInt(maxBytes, DEFAULT_BUILD_CONSOLE_CHUNK_BYTES, MAX_BUILD_CONSOLE_CHUNK_BYTES)
+    )
+  ) as Record<string, unknown>;
 }
 
 export async function getBuildConsoleTail(

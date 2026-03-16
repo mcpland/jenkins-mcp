@@ -278,12 +278,13 @@ export function createJenkinsMcpServer(options: CreateMcpServerOptions): McpServ
       inputSchema: z.object({
         fullname: z.string(),
         start: z.number().int().nonnegative(),
-        number: z.number().int().optional()
+        number: z.number().int().optional(),
+        max_bytes: z.number().int().positive().optional()
       }),
       annotations: { readOnlyHint: true }
     },
-    async ({ fullname, start, number }) =>
-      callTool(async () => getBuildConsoleChunk(runtime, fullname, start, number))
+    async ({ fullname, start, number, max_bytes }) =>
+      callTool(async () => getBuildConsoleChunk(runtime, fullname, start, number, max_bytes))
   );
 
   server.registerTool(

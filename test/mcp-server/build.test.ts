@@ -143,7 +143,7 @@ describe("mcp-server build tools", () => {
       text: "new chunk"
     });
 
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenCalledWith("job1", 1, 120);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenCalledWith("job1", 1, 120, 16 * 1024);
   });
 
   it("getBuildConsoleTail defaults to last build number", async () => {
@@ -181,7 +181,7 @@ describe("mcp-server build tools", () => {
     expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 16);
   });
 
-  it("clamps oversized tail and excerpt requests", async () => {
+  it("clamps oversized console requests", async () => {
     const item: Job = {
       kind: "Job",
       class_: "Job",
@@ -214,9 +214,11 @@ describe("mcp-server build tools", () => {
 
     const runtime = createRuntime(jenkinsMock);
 
+    await getBuildConsoleChunk(runtime, "job1", 0, undefined, 1024 * 1024);
     await searchBuildConsole(runtime, "job1", "error", undefined, 1024 * 1024, 999, 999);
     await getBuildFailureExcerpt(runtime, "job1", undefined, 1024 * 1024, 999);
 
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenCalledWith("job1", 1, 0, 64 * 1024);
     expect(jenkinsMock.getBuildConsoleTail).toHaveBeenNthCalledWith(1, "job1", 1, 128 * 1024);
     expect(jenkinsMock.getBuildConsoleTail).toHaveBeenNthCalledWith(2, "job1", 1, 128 * 1024);
   });

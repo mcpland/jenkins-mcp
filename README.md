@@ -187,7 +187,7 @@ Each provided header overrides the corresponding environment variable for that r
 | --------------------------- | ------------------------------------------- | ---------------------------------------------------- | --------- |
 | `get_build`                 | Get build details                           | `fullname`, `number?`                                | Yes       |
 | `get_build_console_tail`    | Get the recent tail of build console output | `fullname`, `number?`, `max_bytes?`                  | Yes       |
-| `get_build_console_chunk`   | Read incremental console output by offset   | `fullname`, `start`, `number?`                       | Yes       |
+| `get_build_console_chunk`   | Read incremental console output by offset   | `fullname`, `start`, `number?`, `max_bytes?`         | Yes       |
 | `search_build_console`      | Search recent console output with excerpts  | `fullname`, `query`, `number?`, `max_bytes?`, ...    | Yes       |
 | `get_build_failure_excerpt` | Get focused failure excerpts and test hints | `fullname`, `number?`, `max_bytes?`, `max_excerpts?` | Yes       |
 | `get_build_console_output`  | Get raw full console log output             | `fullname`, `number?`                                | Yes       |
