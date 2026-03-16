@@ -181,6 +181,46 @@ describe("mcp-server build tools", () => {
     expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 16);
   });
 
+  it("clamps oversized tail and excerpt requests", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuildConsoleChunk: vi.fn(async () => ({
+        start: 0,
+        nextStart: 0,
+        hasMore: false,
+        completed: true,
+        text: ""
+      })),
+      getBuildConsoleTail: vi.fn(async () => ({
+        start: 0,
+        nextStart: 0,
+        totalBytes: 0,
+        truncated: false,
+        text: ""
+      })),
+      getBuild: vi.fn(async () => ({ number: 1, url: "1" })),
+      getBuildTestReport: vi.fn(async () => ({ suites: [] }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+
+    await searchBuildConsole(runtime, "job1", "error", undefined, 1024 * 1024, 999, 999);
+    await getBuildFailureExcerpt(runtime, "job1", undefined, 1024 * 1024, 999);
+
+    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenNthCalledWith(1, "job1", 1, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenNthCalledWith(2, "job1", 1, 128 * 1024);
+  });
+
   it("getBuildTestReport defaults to last build number", async () => {
     const item: Job = {
       kind: "Job",
@@ -246,7 +286,7 @@ describe("mcp-server build tools", () => {
       ]
     });
 
-    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 256 * 1024);
+    expect(jenkinsMock.getBuildConsoleTail).toHaveBeenCalledWith("job1", 1, 128 * 1024);
   });
 
   it("getBuildFailureExcerpt combines build metadata, tests, and excerpts", async () => {

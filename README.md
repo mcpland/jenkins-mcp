@@ -198,6 +198,7 @@ Each provided header overrides the corresponding environment variable for that r
 
 For large logs, prefer `get_build_console_tail` -> `search_build_console` -> `get_build_console_chunk`.
 `get_build_console_output` is disabled by default and only registered when `--allow-full-console-output` is set.
+Large-log helper tools enforce server-side byte ceilings even if the caller asks for more.
 
 ### Recommended Troubleshooting Flow
 

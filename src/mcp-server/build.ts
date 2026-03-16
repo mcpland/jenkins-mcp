@@ -5,6 +5,16 @@ import type { ToolRuntime } from "./runtime.js";
 import { collectFailureExcerpts, searchBuildConsoleText } from "./build-log.js";
 import { buildToOutput, removeNil } from "./serializers.js";
 
+const MAX_BUILD_CONSOLE_TAIL_BYTES = 64 * 1024;
+const DEFAULT_BUILD_CONSOLE_TAIL_BYTES = 64 * 1024;
+const MAX_SEARCH_BUILD_CONSOLE_BYTES = 128 * 1024;
+const DEFAULT_SEARCH_BUILD_CONSOLE_BYTES = 128 * 1024;
+const MAX_SEARCH_CONTEXT_LINES = 20;
+const MAX_SEARCH_MATCHES = 8;
+const MAX_FAILURE_EXCERPTS = 4;
+const MAX_FAILURE_EXCERPT_BYTES = 128 * 1024;
+const DEFAULT_FAILURE_EXCERPT_BYTES = 128 * 1024;
+
 function resolveLastBuildNumber(item: ItemType): number {
   if (
     (item.kind === "Job" ||
@@ -16,6 +26,24 @@ function resolveLastBuildNumber(item: ItemType): number {
   }
 
   throw new Error("Last build number is unavailable for this item.");
+}
+
+function clampPositiveInt(
+  value: number | undefined,
+  defaultValue: number,
+  maxValue: number
+): number {
+  const normalized = value === undefined ? defaultValue : Math.trunc(value);
+  return Math.max(1, Math.min(normalized, maxValue));
+}
+
+function clampNonNegativeInt(
+  value: number | undefined,
+  defaultValue: number,
+  maxValue: number
+): number {
+  const normalized = value === undefined ? defaultValue : Math.trunc(value);
+  return Math.max(0, Math.min(normalized, maxValue));
 }
 
 function runningBuildToOutput(build: Build): Record<string, unknown> {
@@ -109,7 +137,7 @@ export async function getBuildConsoleTail(
   runtime: ToolRuntime,
   fullname: string,
   number?: number,
-  maxBytes = 64 * 1024
+  maxBytes?: number
 ): Promise<Record<string, unknown>> {
   const jenkins = await runtime.getJenkins();
 
@@ -119,10 +147,13 @@ export async function getBuildConsoleTail(
     targetNumber = resolveLastBuildNumber(item);
   }
 
-  return removeNil(await jenkins.getBuildConsoleTail(fullname, targetNumber, maxBytes)) as Record<
-    string,
-    unknown
-  >;
+  return removeNil(
+    await jenkins.getBuildConsoleTail(
+      fullname,
+      targetNumber,
+      clampPositiveInt(maxBytes, DEFAULT_BUILD_CONSOLE_TAIL_BYTES, MAX_BUILD_CONSOLE_TAIL_BYTES)
+    )
+  ) as Record<string, unknown>;
 }
 
 export async function searchBuildConsole(
@@ -130,9 +161,9 @@ export async function searchBuildConsole(
   fullname: string,
   query: string,
   number?: number,
-  maxBytes = 256 * 1024,
-  contextLines = 8,
-  maxMatches = 5,
+  maxBytes?: number,
+  contextLines?: number,
+  maxMatches?: number,
   caseSensitive = false
 ): Promise<Record<string, unknown>> {
   const jenkins = await runtime.getJenkins();
@@ -143,7 +174,11 @@ export async function searchBuildConsole(
     targetNumber = resolveLastBuildNumber(item);
   }
 
-  const tail = await jenkins.getBuildConsoleTail(fullname, targetNumber, maxBytes);
+  const tail = await jenkins.getBuildConsoleTail(
+    fullname,
+    targetNumber,
+    clampPositiveInt(maxBytes, DEFAULT_SEARCH_BUILD_CONSOLE_BYTES, MAX_SEARCH_BUILD_CONSOLE_BYTES)
+  );
   return {
     query,
     caseSensitive,
@@ -155,8 +190,8 @@ export async function searchBuildConsole(
       text: tail.text,
       baseOffset: tail.start,
       query,
-      contextLines,
-      maxMatches,
+      contextLines: clampNonNegativeInt(contextLines, 8, MAX_SEARCH_CONTEXT_LINES),
+      maxMatches: clampPositiveInt(maxMatches, 5, MAX_SEARCH_MATCHES),
       caseSensitive
     })
   };
@@ -220,8 +255,8 @@ export async function getBuildFailureExcerpt(
   runtime: ToolRuntime,
   fullname: string,
   number?: number,
-  maxBytes = 128 * 1024,
-  maxExcerpts = 3
+  maxBytes?: number,
+  maxExcerpts?: number
 ): Promise<Record<string, unknown>> {
   const jenkins = await runtime.getJenkins();
 
@@ -233,13 +268,18 @@ export async function getBuildFailureExcerpt(
 
   const [build, tail] = await Promise.all([
     jenkins.getBuild(fullname, targetNumber),
-    jenkins.getBuildConsoleTail(fullname, targetNumber, maxBytes)
+    jenkins.getBuildConsoleTail(
+      fullname,
+      targetNumber,
+      clampPositiveInt(maxBytes, DEFAULT_FAILURE_EXCERPT_BYTES, MAX_FAILURE_EXCERPT_BYTES)
+    )
   ]);
 
   let failingTests: Record<string, unknown>[] = [];
   try {
     const report = await jenkins.getBuildTestReport(fullname, targetNumber);
-    failingTests = extractFailingTests(report, Math.max(maxExcerpts * 2, 6));
+    const normalizedMaxExcerpts = clampPositiveInt(maxExcerpts, 3, MAX_FAILURE_EXCERPTS);
+    failingTests = extractFailingTests(report, Math.max(normalizedMaxExcerpts * 2, 6));
   } catch (error) {
     if (!(error instanceof JenkinsHttpError && error.status === 404)) {
       throw error;
@@ -258,7 +298,7 @@ export async function getBuildFailureExcerpt(
     excerpts: collectFailureExcerpts({
       text: tail.text,
       baseOffset: tail.start,
-      maxExcerpts
+      maxExcerpts: clampPositiveInt(maxExcerpts, 3, MAX_FAILURE_EXCERPTS)
     })
   };
 }
