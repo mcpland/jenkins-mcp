@@ -11,16 +11,19 @@ const MAX_BUILD_CONSOLE_TAIL_BYTES = 64 * 1024;
 const DEFAULT_BUILD_CONSOLE_TAIL_BYTES = 64 * 1024;
 const MAX_SEARCH_BUILD_CONSOLE_BYTES = 128 * 1024;
 const DEFAULT_SEARCH_BUILD_CONSOLE_BYTES = 128 * 1024;
+const SEARCH_BUILD_CONSOLE_CHUNK_BYTES = 16 * 1024;
 const MAX_SEARCH_CONTEXT_LINES = 20;
 const MAX_SEARCH_MATCHES = 8;
 const MAX_FAILURE_EXCERPTS = 4;
 const MAX_FAILURE_EXCERPT_BYTES = 128 * 1024;
 const DEFAULT_FAILURE_EXCERPT_BYTES = 128 * 1024;
+const FAILURE_EXCERPT_CHUNK_BYTES = 16 * 1024;
 const MAX_TEST_FAILURE_TEXT_CHARS = 2048;
 const TRUNCATION_MARKER = "[...truncated...]";
 
 interface ScanBuildConsoleExcerptsOptions {
   chunkBytes: number;
+  maxScanBytes: number;
   contextLines: number;
   maxMatches: number;
   queries: Array<{ label: string; query: string; caseSensitive?: boolean }>;
@@ -124,9 +127,21 @@ async function scanBuildConsoleExcerpts(
   let truncated: boolean;
 
   while (true) {
-    const chunk = await jenkins.getBuildConsoleChunk(fullname, number, start, options.chunkBytes);
+    const remainingBytes = options.maxScanBytes - start;
+    if (remainingBytes <= 0) {
+      truncated = true;
+      break;
+    }
+
+    const chunk = await jenkins.getBuildConsoleChunk(
+      fullname,
+      number,
+      start,
+      Math.min(options.chunkBytes, remainingBytes)
+    );
     collector.appendChunk(chunk.text, chunk.start);
     scannedEnd = Math.max(scannedEnd, chunk.nextStart);
+    const exhaustedBudget = scannedEnd >= options.maxScanBytes;
 
     if (options.stopWhenEnough && collector.canStop()) {
       truncated = chunk.hasMore;
@@ -139,6 +154,11 @@ async function scanBuildConsoleExcerpts(
     }
 
     if (chunk.nextStart <= start) {
+      truncated = true;
+      break;
+    }
+
+    if (exhaustedBudget) {
       truncated = true;
       break;
     }
@@ -326,12 +346,14 @@ export async function searchBuildConsole(
 ): Promise<Record<string, unknown>> {
   const jenkins = await runtime.getJenkins();
   const targetNumber = await resolveTargetBuildNumber(jenkins, fullname, number);
+  const normalizedMaxScanBytes = clampPositiveInt(
+    maxBytes,
+    DEFAULT_SEARCH_BUILD_CONSOLE_BYTES,
+    MAX_SEARCH_BUILD_CONSOLE_BYTES
+  );
   const scan = await scanBuildConsoleExcerpts(jenkins, fullname, targetNumber, {
-    chunkBytes: clampPositiveInt(
-      maxBytes,
-      DEFAULT_SEARCH_BUILD_CONSOLE_BYTES,
-      MAX_SEARCH_BUILD_CONSOLE_BYTES
-    ),
+    chunkBytes: Math.min(SEARCH_BUILD_CONSOLE_CHUNK_BYTES, normalizedMaxScanBytes),
+    maxScanBytes: normalizedMaxScanBytes,
     contextLines: clampNonNegativeInt(contextLines, 8, MAX_SEARCH_CONTEXT_LINES),
     maxMatches: clampPositiveInt(maxMatches, 5, MAX_SEARCH_MATCHES),
     queries: [{ label: query, query, caseSensitive }],
@@ -359,7 +381,7 @@ export async function getBuildFailureExcerpt(
   const jenkins = await runtime.getJenkins();
   const targetNumber = await resolveTargetBuildNumber(jenkins, fullname, number);
   const normalizedMaxExcerpts = clampPositiveInt(maxExcerpts, 3, MAX_FAILURE_EXCERPTS);
-  const normalizedChunkBytes = clampPositiveInt(
+  const normalizedMaxScanBytes = clampPositiveInt(
     maxBytes,
     DEFAULT_FAILURE_EXCERPT_BYTES,
     MAX_FAILURE_EXCERPT_BYTES
@@ -378,7 +400,8 @@ export async function getBuildFailureExcerpt(
   }
 
   const scan = await scanBuildConsoleExcerpts(jenkins, fullname, targetNumber, {
-    chunkBytes: normalizedChunkBytes,
+    chunkBytes: Math.min(FAILURE_EXCERPT_CHUNK_BYTES, normalizedMaxScanBytes),
+    maxScanBytes: normalizedMaxScanBytes,
     contextLines: 12,
     maxMatches: normalizedMaxExcerpts,
     queries: toFailureSearchQueries(failingTests),

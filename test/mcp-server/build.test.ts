@@ -212,8 +212,8 @@ describe("mcp-server build tools", () => {
     await getBuildFailureExcerpt(runtime, "job1", undefined, 1024 * 1024, 999);
 
     expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 64 * 1024);
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 0, 128 * 1024);
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(3, "job1", 1, 0, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 0, 16 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(3, "job1", 1, 0, 16 * 1024);
   });
 
   it("getBuildTestReport defaults to last build number", async () => {
@@ -290,8 +290,8 @@ describe("mcp-server build tools", () => {
       ]
     });
 
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 128 * 1024);
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 8, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 16 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 8, 16 * 1024);
   });
 
   it("getBuildFailureExcerpt combines build metadata, tests, and excerpts", async () => {
@@ -386,8 +386,116 @@ describe("mcp-server build tools", () => {
       ]
     });
 
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 128 * 1024);
-    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 6, 128 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 16 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(2, "job1", 1, 6, 16 * 1024);
+  });
+
+  it("searchBuildConsole stops scanning when the byte budget is exhausted", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuildConsoleChunk: vi
+        .fn()
+        .mockResolvedValueOnce({
+          start: 0,
+          nextStart: 16 * 1024,
+          hasMore: true,
+          completed: false,
+          text: "compile\n"
+        })
+        .mockResolvedValueOnce({
+          start: 16 * 1024,
+          nextStart: 20 * 1024,
+          hasMore: true,
+          completed: false,
+          text: "still running\n"
+        })
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+    const result = await searchBuildConsole(runtime, "job1", "error", undefined, 20 * 1024);
+
+    expect(result).toMatchObject({
+      scannedStart: 0,
+      scannedEnd: 20 * 1024,
+      totalBytes: 20 * 1024,
+      truncated: true,
+      matches: []
+    });
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 16 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(
+      2,
+      "job1",
+      1,
+      16 * 1024,
+      4 * 1024
+    );
+  });
+
+  it("getBuildFailureExcerpt stops scanning when the byte budget is exhausted", async () => {
+    const item: Job = {
+      kind: "Job",
+      class_: "Job",
+      color: "blue",
+      fullname: "job1",
+      name: "job1",
+      url: "1",
+      lastBuild: { number: 1, url: "1" }
+    };
+
+    const jenkinsMock = {
+      getItem: vi.fn(async () => item),
+      getBuild: vi.fn(async () => ({
+        number: 1,
+        url: "1",
+        building: false,
+        result: "FAILURE"
+      })),
+      getBuildConsoleChunk: vi
+        .fn()
+        .mockResolvedValueOnce({
+          start: 0,
+          nextStart: 16 * 1024,
+          hasMore: true,
+          completed: false,
+          text: "build\n"
+        })
+        .mockResolvedValueOnce({
+          start: 16 * 1024,
+          nextStart: 20 * 1024,
+          hasMore: true,
+          completed: false,
+          text: "still running\n"
+        }),
+      getBuildTestReport: vi.fn(async () => ({ suites: [] }))
+    } satisfies Partial<Jenkins>;
+
+    const runtime = createRuntime(jenkinsMock);
+    const result = await getBuildFailureExcerpt(runtime, "job1", undefined, 20 * 1024);
+
+    expect(result.scan).toEqual({
+      start: 0,
+      nextStart: 20 * 1024,
+      totalBytes: 20 * 1024,
+      truncated: true
+    });
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(1, "job1", 1, 0, 16 * 1024);
+    expect(jenkinsMock.getBuildConsoleChunk).toHaveBeenNthCalledWith(
+      2,
+      "job1",
+      1,
+      16 * 1024,
+      4 * 1024
+    );
   });
 
   it("truncates oversized failure details from the test report", async () => {
