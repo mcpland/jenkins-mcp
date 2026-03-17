@@ -453,6 +453,28 @@ describe("Build operations", () => {
     );
   });
 
+  it("gets console chunk without splitting UTF-8 characters", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(new TextEncoder().encode("A中B"), {
+        status: 200,
+        headers: {
+          "x-text-size": "5",
+          "x-more-data": "false"
+        }
+      })
+    );
+
+    const jenkins = createClient(fetchMock);
+
+    await expect(jenkins.getBuildConsoleChunk("example-job", 1, 0, 3)).resolves.toEqual({
+      start: 0,
+      nextStart: 1,
+      hasMore: true,
+      completed: false,
+      text: "A"
+    });
+  });
+
   it("gets console tail without buffering the full log", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -466,6 +488,22 @@ describe("Build operations", () => {
       totalBytes: 16,
       truncated: true,
       text: "bcdef"
+    });
+  });
+
+  it("gets console tail without splitting UTF-8 characters", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(new TextEncoder().encode("A中B"), { status: 200 }));
+
+    const jenkins = createClient(fetchMock);
+
+    await expect(jenkins.getBuildConsoleTail("example-job", 1, 3)).resolves.toEqual({
+      start: 4,
+      nextStart: 5,
+      totalBytes: 5,
+      truncated: true,
+      text: "B"
     });
   });
 

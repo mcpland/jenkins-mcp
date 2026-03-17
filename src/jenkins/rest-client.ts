@@ -109,6 +109,88 @@ function parseHeaderBoolean(value: string | null): boolean | undefined {
   return undefined;
 }
 
+function isUtf8ContinuationByte(value: number): boolean {
+  return (value & 0b1100_0000) === 0b1000_0000;
+}
+
+function utf8SequenceLength(value: number): number {
+  if ((value & 0b1000_0000) === 0) {
+    return 1;
+  }
+
+  if ((value & 0b1110_0000) === 0b1100_0000) {
+    return 2;
+  }
+
+  if ((value & 0b1111_0000) === 0b1110_0000) {
+    return 3;
+  }
+
+  if ((value & 0b1111_1000) === 0b1111_0000) {
+    return 4;
+  }
+
+  return 0;
+}
+
+function trimIncompleteUtf8Suffix(bytes: Uint8Array): number {
+  if (bytes.length === 0) {
+    return 0;
+  }
+
+  let continuationBytes = 0;
+  let leadIndex = bytes.length - 1;
+
+  while (leadIndex >= 0 && continuationBytes < 3 && isUtf8ContinuationByte(bytes[leadIndex] ?? 0)) {
+    continuationBytes += 1;
+    leadIndex -= 1;
+  }
+
+  if (leadIndex < 0) {
+    return 0;
+  }
+
+  const sequenceLength = utf8SequenceLength(bytes[leadIndex] ?? 0);
+  if (sequenceLength === 0) {
+    return bytes.length;
+  }
+
+  const availableLength = continuationBytes + 1;
+  return sequenceLength > availableLength ? leadIndex : bytes.length;
+}
+
+function trimLeadingUtf8ContinuationBytes(bytes: Uint8Array): number {
+  let index = 0;
+
+  while (index < bytes.length && index < 3 && isUtf8ContinuationByte(bytes[index] ?? 0)) {
+    index += 1;
+  }
+
+  return index;
+}
+
+function decodeUtf8Window(
+  bytes: Uint8Array,
+  trimLeadingContinuationBytes = false
+): {
+  text: string;
+  byteLength: number;
+  startOffset: number;
+  trimmed: boolean;
+} {
+  const startOffset = trimLeadingContinuationBytes ? trimLeadingUtf8ContinuationBytes(bytes) : 0;
+  const trimmedStart = bytes.subarray(startOffset);
+  const endOffset = trimIncompleteUtf8Suffix(trimmedStart);
+  const decodedBytes = trimmedStart.subarray(0, endOffset);
+
+  return {
+    text: new TextDecoder().decode(decodedBytes),
+    byteLength: decodedBytes.byteLength,
+    startOffset,
+    trimmed: startOffset > 0 || endOffset < trimmedStart.byteLength
+  };
+}
+
 async function readTailText(response: Response, maxBytes: number): Promise<BuildConsoleTail> {
   const body = response.body;
   if (!body) {
@@ -165,12 +247,16 @@ async function readTailText(response: Response, maxBytes: number): Promise<Build
     offset += chunk.byteLength;
   }
 
+  const decodedTail = decodeUtf8Window(tail, true);
+  const start = totalBytes - bufferedBytes + decodedTail.startOffset;
+  const nextStart = start + decodedTail.byteLength;
+
   return {
-    start: totalBytes - bufferedBytes,
-    nextStart: totalBytes,
+    start,
+    nextStart,
     totalBytes,
-    truncated: totalBytes > bufferedBytes,
-    text: new TextDecoder().decode(tail)
+    truncated: totalBytes > bufferedBytes || decodedTail.trimmed,
+    text: decodedTail.text
   };
 }
 
@@ -233,10 +319,12 @@ async function readTextWindow(
     offset += chunk.byteLength;
   }
 
+  const decodedWindow = decodeUtf8Window(window);
+
   return {
-    text: new TextDecoder().decode(window),
-    bytesRead,
-    truncated
+    text: decodedWindow.text,
+    bytesRead: decodedWindow.byteLength,
+    truncated: truncated || decodedWindow.trimmed
   };
 }
 
