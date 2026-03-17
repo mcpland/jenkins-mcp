@@ -121,7 +121,7 @@ async function scanBuildConsoleExcerpts(
 
   let start = 0;
   let scannedEnd = 0;
-  let truncated = false;
+  let truncated: boolean;
 
   while (true) {
     const chunk = await jenkins.getBuildConsoleChunk(fullname, number, start, options.chunkBytes);
